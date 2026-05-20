@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Antigravity Quant Trading Grid — Multi-pane live trading dashboard with MT5, Hyperliquid, and yfinance integration">
+    <title>Antigravity // Quant Trading Grid</title>
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            fetch('/api/log_error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, source, lineno, colno, stack: error ? error.stack : '' })
+            }).catch(() => {});
+            return false;
+        };
+    </script>
+
+    <!-- Modern Premium Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <!-- TradingView Lightweight Charts Library (Local) -->
+    <script src="/static/js/lightweight-charts.standalone.production.js"></script>
+
+    <!-- Pure JS Technical Indicators Engine -->
+    <script src="/static/js/indicators.js"></script>
+
+    <!-- Local Custom Premium Stylesheets -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/trading.css">
+</head>
+<body>
+    <div class="dashboard-wrapper">
+
+        <!-- ─────────────────────── Premium Header ─────────────────────── -->
+        <header class="main-header glass-effect">
+            <div class="header-branding">
+                <div class="glow-indicator"></div>
+                <h1>ANTIGRAVITY <span>// QUANT TRADING GRID</span></h1>
+            </div>
+
+            <div class="header-controls">
+                <div class="control-group">
+                    <label for="chart-count-select">NUMBER OF PANES</label>
+                    <select id="chart-count-select" class="custom-select">
+                        <option value="1">1 Pane (Full Screen)</option>
+                        <option value="2">2 Panes (Side-by-Side)</option>
+                        <option value="4">4 Panes (2×2 Grid)</option>
+                        <option value="6" selected>6 Panes (3×2 Grid)</option>
+                        <option value="8">8 Panes (4×2 Grid)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="global-lot-size">DEFAULT LOT</label>
+                    <input type="number" id="global-lot-size" class="custom-select" value="0.10" step="0.01" min="0.01" style="width: 70px; padding: 4px; text-align: center;">
+                </div>
+
+                <div class="mt5-status-badge disconnected" id="mt5-status-panel" title="Click to test MT5 Connection">
+                    <span class="status-dot"></span>
+                    <span class="status-label">MT5: DISCONNECTED</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ─────────────────────── Chart Grid ─────────────────────── -->
+        <main class="grid-container" id="grid-container"></main>
+    </div>
+
+    <!-- ═══════════════════ Pane Template ═══════════════════ -->
+    <template id="chart-pane-template">
+        <div class="chart-pane glass-effect" data-pane-id="">
+
+            <!-- ── Pane Header Controls ── -->
+            <div class="pane-header">
+                <div class="pane-title">PANE #<span class="pane-num">1</span></div>
+
+                <div class="pane-settings">
+                    <select class="pane-source-select custom-select-sm">
+                        <option value="hyperliquid">Hyperliquid (Crypto)</option>
+                        <option value="yfinance">yfinance (Indian Stocks)</option>
+                        <option value="mt5">MetaTrader 5 (FX/CFD)</option>
+                    </select>
+
+                    <div class="symbol-input-wrapper">
+                        <input type="text" class="pane-symbol-input" placeholder="Symbol" value="BTC" list="symbols-datalist">
+                    </div>
+
+                    <select class="pane-tf-select custom-select-sm">
+                        <option value="1m">1m</option>
+                        <option value="5m" selected>5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h">4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- ── Color-coded Price Ticker ── -->
+            <div class="ticker-bar">
+                <span class="ticker-symbol">BTC</span>
+                <span class="ticker-price">--</span>
+                <span class="ticker-direction">--</span>
+            </div>
+
+            <!-- ── Indicator Toolbar ── -->
+            <div class="indicator-toolbar">
+                <!-- Overlays -->
+                <span class="ind-group-label">OVERLAYS</span>
+                <button class="ind-chip" data-indicator="sma20"     title="Simple Moving Average 20">SMA 20</button>
+                <button class="ind-chip" data-indicator="sma50"     title="Simple Moving Average 50">SMA 50</button>
+                <button class="ind-chip" data-indicator="ema9"      title="Exponential Moving Average 9">EMA 9</button>
+                <button class="ind-chip" data-indicator="ema21"     title="Exponential Moving Average 21">EMA 21</button>
+                <button class="ind-chip" data-indicator="bb20"      title="Bollinger Bands 20,2">BB(20)</button>
+                <button class="ind-chip" data-indicator="vwap"      title="Volume Weighted Average Price">VWAP</button>
+
+                <div class="ind-separator"></div>
+
+                <!-- Oscillators -->
+                <span class="ind-group-label">OSCILLATORS</span>
+                <button class="ind-chip" data-indicator="rsi14"     title="RSI 14">RSI 14</button>
+                <button class="ind-chip" data-indicator="macd"      title="MACD 12,26,9">MACD</button>
+                <button class="ind-chip" data-indicator="volume"    title="Volume Bars">VOL</button>
+
+                <div class="ind-separator"></div>
+
+                <!-- Drawing Tools -->
+                <span class="ind-group-label">TOOLS</span>
+                <button class="tool-chip" data-tool="hline"    title="Horizontal Line">—</button>
+                <button class="tool-chip" data-tool="tline"    title="Trend Line">↗</button>
+                <button class="tool-chip" data-tool="rect"     title="Rectangle / Box">▭</button>
+                <button class="tool-chip tool-erase" data-tool="erase" title="Erase last drawing">✕</button>
+            </div>
+
+            <!-- ── Main Chart Mount ── -->
+            <div class="chart-mount">
+                <!-- Interactive layer for MT5 draggable trading badges -->
+                <div class="trading-overlay-container"></div>
+                
+                <div class="pane-loading-overlay">
+                    <div class="spinner"></div>
+                    <span class="loading-text">Fetching historical data...</span>
+                </div>
+            </div>
+
+            <!-- ── Sub-pane Oscillators (RSI / MACD / Volume) ── -->
+            <div class="oscillators-container hidden"></div>
+        </div>
+    </template>
+
+    <!-- Global symbol datalist -->
+    <datalist id="symbols-datalist">
+        <option value="BTC">BTC (Hyperliquid)</option>
+        <option value="ETH">ETH (Hyperliquid)</option>
+        <option value="SOL">SOL (Hyperliquid)</option>
+        <option value="ARB">ARB (Hyperliquid)</option>
+        <option value="SUI">SUI (Hyperliquid)</option>
+        <option value="AVAX">AVAX (Hyperliquid)</option>
+        <option value="RELIANCE.NS">RELIANCE (yfinance)</option>
+        <option value="TCS.NS">TCS (yfinance)</option>
+        <option value="INFY.NS">INFY (yfinance)</option>
+        <option value="HDFCBANK.NS">HDFCBANK (yfinance)</option>
+        <option value="^NSEI">NIFTY 50 (yfinance)</option>
+        <option value="EURUSD">EURUSD (MT5)</option>
+        <option value="GBPUSD">GBPUSD (MT5)</option>
+        <option value="USDJPY">USDJPY (MT5)</option>
+        <option value="AUDUSD">AUDUSD (MT5)</option>
+        <option value="XAUUSD">XAUUSD / GOLD (MT5)</option>
+    </datalist>
+
+    <!-- Global Context Menu for Trading -->
+    <div id="chart-context-menu" class="context-menu hidden">
+        <div class="menu-item-input" style="padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <label style="font-size: 11px; opacity: 0.7;">Lot Size:</label>
+            <input type="number" id="cmenu-volume-input" value="0.10" step="0.01" min="0.01" style="width: 60px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 2px 4px; border-radius: 4px; text-align: center; font-size: 12px;">
+        </div>
+        <div class="menu-item" id="cmenu-buy-limit">Buy <span class="cmenu-vol-disp">0.1</span> <span class="cmenu-symbol"></span> @ <span class="cmenu-price"></span> limit</div>
+        <div class="menu-item" id="cmenu-sell-limit">Sell <span class="cmenu-vol-disp">0.1</span> <span class="cmenu-symbol"></span> @ <span class="cmenu-price"></span> limit</div>
+        <div class="menu-separator"></div>
+        <div class="menu-item" id="cmenu-buy-stop">Buy <span class="cmenu-vol-disp">0.1</span> <span class="cmenu-symbol"></span> @ <span class="cmenu-price"></span> stop</div>
+        <div class="menu-item" id="cmenu-sell-stop">Sell <span class="cmenu-vol-disp">0.1</span> <span class="cmenu-symbol"></span> @ <span class="cmenu-price"></span> stop</div>
+        <div class="menu-separator"></div>
+        <div class="menu-item" id="cmenu-close-menu">Close Menu</div>
+    </div>
+
+    <!-- App Coordinator -->
+    <script src="/static/js/chart_manager.js"></script>
+</body>
+</html>

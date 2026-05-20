@@ -1,0 +1,171 @@
+/* ==========================================================================
+   Trading UI Overlay & Context Menu Styles
+   ========================================================================== */
+
+/* Context Menu */
+.context-menu {
+    position: absolute;
+    background: rgba(var(--bg-panel-raw), 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    padding: 6px 0;
+    min-width: 220px;
+    z-index: 9999;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--text-primary);
+    user-select: none;
+}
+
+.context-menu.hidden {
+    display: none;
+}
+
+.menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.menu-item:hover {
+    background: rgba(var(--accent-glow-raw), 0.2);
+    color: #fff;
+}
+
+.menu-separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 0;
+}
+
+/* Trading Overlay Container */
+.trading-overlay-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Let clicks pass through to canvas by default */
+    overflow: hidden;
+    z-index: 10;
+}
+
+/* Base Order Line */
+.order-line-wrapper {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0; /* Centered precisely on Y */
+    /* pointer-events: none; */
+}
+
+/* The dashed horizontal line */
+.order-dashed-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    border-top: 1px dashed;
+    transform: translateY(-50%);
+}
+
+.order-type-buy .order-dashed-line { border-color: var(--accent-bull); }
+.order-type-sell .order-dashed-line { border-color: var(--accent-bear); }
+.order-type-tp .order-dashed-line { border-color: #00E676; }
+.order-type-sl .order-dashed-line { border-color: #FF9100; }
+
+/* The Badge UI Container (Left aligned, vertically centered on line) */
+.order-badges {
+    position: absolute;
+    left: 10px; /* Offset from left axis */
+    top: 0;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: auto; /* allow interacting with badges */
+}
+
+/* Interactive Badge Base */
+.order-badge {
+    background: rgba(var(--bg-panel-raw), 0.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: grab;
+    user-select: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition: transform 0.1s;
+}
+
+.order-badge:active {
+    cursor: grabbing;
+}
+
+.order-badge:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Badge colors by type */
+.badge-type-buy { background: rgba(0, 230, 118, 0.2); border-color: var(--accent-bull); color: #fff; }
+.badge-type-sell { background: rgba(255, 23, 68, 0.2); border-color: var(--accent-bear); color: #fff; }
+.badge-type-tp { border-color: #00E676; color: #00E676; }
+.badge-type-sl { border-color: #FF9100; color: #FF9100; }
+
+.badge-label {
+    text-transform: uppercase;
+}
+
+.badge-value {
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.badge-close {
+    cursor: pointer;
+    opacity: 0.5;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.badge-close:hover {
+    opacity: 1;
+    color: var(--accent-bear);
+}
+
+.badge-add-btn {
+    cursor: pointer;
+    opacity: 0.7;
+    margin-left: 4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.1);
+    font-size: 9px;
+    transition: all 0.2s;
+}
+
+.badge-add-btn:hover {
+    opacity: 1;
+    background: rgba(255,255,255,0.2);
+}
+
+.order-badge.is-dragging {
+    background: rgba(var(--bg-panel-raw), 0.95);
+    z-index: 100;
+    border-color: #fff;
+    cursor: grabbing;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
