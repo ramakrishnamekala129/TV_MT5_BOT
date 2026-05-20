@@ -40,6 +40,7 @@ function startApp() {
     const cMenu = document.getElementById('chart-context-menu');
     let cMenuTargetPane = null;
     let cMenuPrice = 0;
+    let activeSMCSettingsPaneId = null;
 
 
     // DOM refs
@@ -95,6 +96,7 @@ function startApp() {
         updateGridCount(STATE.activePanesCount);
         testMT5Connection();
         window.addEventListener('resize', handleResize);
+        initSMCSettingsEvents();
     }
 
     // ──────────────────────────────────────────────
@@ -218,6 +220,13 @@ function startApp() {
         });
         resizeObserver.observe(chartMount);
 
+        // Load saved SMC settings
+        const savedSmcSettings = SafeStorage.getItem(`ag_pane_smc_settings_${paneId}`);
+        let smcSettings = {};
+        if (savedSmcSettings) {
+            try { smcSettings = JSON.parse(savedSmcSettings); } catch(e) {}
+        }
+
         // ── Pane state object ──
         STATE.panes[paneId] = {
             id: paneId,
@@ -237,6 +246,8 @@ function startApp() {
             candles: [],
             activeIndicators,
             overlaySeries: {},
+            smcSeries: [],
+            smcSettings: smcSettings,
             activeTool: null,
             drawings: []
         };
@@ -273,10 +284,25 @@ function startApp() {
         // Indicator toolbar wiring
         paneEl.querySelectorAll('.ind-chip').forEach(btn => {
             const ind = btn.dataset.indicator;
-            if (activeIndicators[ind]) btn.classList.add('active');
+            if (activeIndicators[ind]) {
+                btn.classList.add('active');
+                const group = btn.closest('.ind-chip-group');
+                if (group) group.classList.add('active');
+            }
             btn.addEventListener('click', e => {
                 e.stopPropagation();
                 toggleIndicator(paneId, ind, btn);
+            });
+        });
+
+        // Settings gear wiring
+        paneEl.querySelectorAll('.ind-settings-icon').forEach(btn => {
+            const ind = btn.dataset.indicator;
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                if (ind === 'smc') {
+                    openSMCSettings(paneId);
+                }
             });
         });
 
@@ -346,6 +372,7 @@ function startApp() {
             try { pane.chart.removeSeries(s); } catch(e) {}
         });
         pane.overlaySeries = {};
+        clearSMC(pane);
 
         // Clear oscillator
         clearOscillator(pane);
@@ -469,10 +496,16 @@ function startApp() {
             case 'rsi14': renderOscillatorRSI(pane); break;
             case 'macd':  renderOscillatorMACD(pane); break;
             case 'volume': renderOscillatorVolume(pane); break;
+            case 'smc': renderSMC(pane); break;
         }
     }
 
     function removeIndicator(pane, indKey) {
+        if (indKey === 'smc') {
+            clearSMC(pane);
+            return;
+        }
+
         // Overlay series removal
         const overlayKeys = {
             sma20:  ['sma20'],
@@ -846,6 +879,356 @@ function startApp() {
                 renderIndicator(pane, indKey);
             }
         });
+    }
+
+    // ── SMC Render & Settings Support ──
+    function clearSMC(pane) {
+        if (pane.smcSeries && pane.smcSeries.length > 0) {
+            pane.smcSeries.forEach(s => {
+                try { pane.chart.removeSeries(s); } catch(e) {}
+            });
+            pane.smcSeries = [];
+        }
+        if (pane.markersPlugin) {
+            try { pane.markersPlugin.setMarkers([]); } catch(e) {}
+        } else {
+            try { pane.series.setMarkers([]); } catch(e) {}
+        }
+    }
+
+    function renderSMC(pane) {
+        if (!pane.candles || pane.candles.length === 0) return;
+        
+        clearSMC(pane);
+
+        const smcData = Indicators.smc(pane.candles, pane.smcSettings || {});
+        if (!smcData) return;
+
+        const cfg = smcData.settings;
+        const candles = pane.candles;
+        const lastTime = candles[candles.length - 1].time;
+        const isMono = cfg.style === 'Monochrome';
+
+        const greenColor = isMono ? '#b2b5be' : '#089981';
+        const redColor = isMono ? '#5d606b' : '#F23645';
+
+        const allMarkers = [];
+
+        // 1. Swing Highs/Lows Markers
+        if (cfg.showSwings && smcData.swingHighsLows) {
+            smcData.swingHighsLows.forEach(shl => {
+                allMarkers.push({
+                    time: shl.time,
+                    position: shl.position,
+                    color: isMono ? (shl.position === 'aboveBar' ? '#5d606b' : '#b2b5be') : shl.color,
+                    shape: shl.position === 'aboveBar' ? 'arrowDown' : 'arrowUp',
+                    text: shl.label,
+                    size: 1
+                });
+            });
+        }
+
+        // Helper to draw segment with text overlay
+        const drawSegment = (start, end, price, text, color, lineStyle, lineWidth, textPosition = 'aboveBar') => {
+            if (start >= end) return;
+            const s = pane.chart.addSeries(LightweightCharts.LineSeries, {
+                color: lineStyle === null ? 'transparent' : color,
+                lineWidth: lineWidth,
+                lineStyle: lineStyle === null ? LightweightCharts.LineStyle.Solid : lineStyle,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+            s.setData([
+                { time: start, value: price },
+                { time: end, value: price }
+            ]);
+            if (text) {
+                allMarkers.push({
+                    time: end,
+                    position: textPosition,
+                    color: color === 'transparent' ? '#878b94' : color,
+                    shape: textPosition === 'aboveBar' ? 'arrowDown' : 'arrowUp',
+                    text: text,
+                    size: 1
+                });
+            }
+            pane.smcSeries.push(s);
+        };
+
+        // Helper to draw closed rectangle box
+        const drawBox = (start, end, top, bottom, color, lineWidth = 1) => {
+            if (start >= end) return;
+            const sTop = pane.chart.addSeries(LightweightCharts.LineSeries, {
+                color: color,
+                lineWidth: lineWidth,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+            sTop.setData([
+                { time: start, value: top },
+                { time: end, value: top }
+            ]);
+            pane.smcSeries.push(sTop);
+
+            const sBot = pane.chart.addSeries(LightweightCharts.LineSeries, {
+                color: color,
+                lineWidth: lineWidth,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+            sBot.setData([
+                { time: start, value: bottom },
+                { time: end, value: bottom }
+            ]);
+            pane.smcSeries.push(sBot);
+        };
+
+        // 2. Breakouts (BOS / CHoCH)
+        if (smcData.breakouts) {
+            smcData.breakouts.forEach(b => {
+                const color = b.direction === 'bull' ? greenColor : redColor;
+                const style = b.type === 'swing' 
+                    ? LightweightCharts.LineStyle.Solid 
+                    : LightweightCharts.LineStyle.Dashed;
+                const width = b.type === 'swing' ? 1.5 : 1;
+                const textPos = b.direction === 'bull' ? 'aboveBar' : 'belowBar';
+                drawSegment(b.start.time, b.end.time, b.start.price, `${b.tag}`, color, style, width, textPos);
+            });
+        }
+
+        // 3. Equal Highs/Lows (EQH / EQL)
+        if (cfg.showEqualHighsLows && smcData.equalHighsLows) {
+            smcData.equalHighsLows.forEach(eq => {
+                const color = eq.type === 'EQH' ? redColor : greenColor;
+                const textPos = eq.type === 'EQH' ? 'aboveBar' : 'belowBar';
+                drawSegment(eq.start.time, eq.end.time, eq.start.price, eq.type, color, LightweightCharts.LineStyle.Dotted, 1, textPos);
+            });
+        }
+
+        // 4. Order Blocks (OBs)
+        if (cfg.showSwingOrderBlocks && smcData.swingOBs) {
+            smcData.swingOBs.forEach(ob => {
+                const color = ob.bias === 1
+                    ? (isMono ? 'rgba(178, 181, 190, 0.6)' : 'rgba(24, 72, 204, 0.6)')
+                    : (isMono ? 'rgba(93, 96, 107, 0.6)' : 'rgba(178, 40, 51, 0.6)');
+                drawBox(ob.time, lastTime, ob.high, ob.low, color, 1.5);
+            });
+        }
+
+        if (cfg.showInternalOrderBlocks && smcData.internalOBs) {
+            smcData.internalOBs.forEach(ob => {
+                const color = ob.bias === 1
+                    ? (isMono ? 'rgba(178, 181, 190, 0.45)' : 'rgba(49, 121, 245, 0.45)')
+                    : (isMono ? 'rgba(93, 96, 107, 0.45)' : 'rgba(247, 124, 128, 0.45)');
+                drawBox(ob.time, lastTime, ob.high, ob.low, color, 1);
+            });
+        }
+
+        // 5. Fair Value Gaps (FVG)
+        if (cfg.showFairValueGaps && smcData.fvgs) {
+            const tfSeconds = getTimeframeDurationSeconds(pane.timeframe);
+            const extendTime = addTime(lastTime, (cfg.fairValueGapsExtend || 0) * tfSeconds);
+
+            smcData.fvgs.forEach(fvg => {
+                const color = fvg.bias === 1
+                    ? (isMono ? 'rgba(178, 181, 190, 0.4)' : 'rgba(0, 255, 104, 0.4)')
+                    : (isMono ? 'rgba(93, 96, 107, 0.4)' : 'rgba(255, 0, 8, 0.4)');
+                drawBox(fvg.time, extendTime, fvg.top, fvg.bottom, color, 1);
+            });
+        }
+
+        // 6. Premium & Discount Zones
+        if (cfg.showPremiumDiscountZones && smcData.trailing) {
+            const t = smcData.trailing;
+            const startTime = t.barTime;
+            const range = t.top - t.bottom;
+
+            if (range > 0) {
+                // Premium Zone Box
+                const premTop = t.top;
+                const premBot = t.top - 0.05 * range;
+                const premColor = isMono ? 'rgba(93, 96, 107, 0.4)' : 'rgba(242, 54, 69, 0.4)';
+                drawBox(startTime, lastTime, premTop, premBot, premColor, 1);
+                drawSegment(startTime, lastTime, (premTop + premBot)/2, 'Premium', 'transparent', null, 0, 'aboveBar');
+
+                // Equilibrium Line
+                const eqLevel = (t.top + t.bottom) / 2;
+                drawSegment(startTime, lastTime, eqLevel, 'Equilibrium', 'rgba(135, 139, 148, 0.4)', LightweightCharts.LineStyle.Dashed, 1, 'belowBar');
+
+                // Discount Zone Box
+                const discTop = t.bottom + 0.05 * range;
+                const discBot = t.bottom;
+                const discColor = isMono ? 'rgba(178, 181, 190, 0.4)' : 'rgba(8, 153, 129, 0.4)';
+                drawBox(startTime, lastTime, discTop, discBot, discColor, 1);
+                drawSegment(startTime, lastTime, (discTop + discBot)/2, 'Discount', 'transparent', null, 0, 'belowBar');
+            }
+        }
+
+        // 7. Strong & Weak High/Low Trailing Levels
+        if (cfg.showHighLowSwings && smcData.trailing) {
+            const t = smcData.trailing;
+            if (t.top !== null) {
+                const label = t.swingTrendBias === -1 ? 'Strong High' : 'Weak High';
+                drawSegment(t.lastTopTime, lastTime, t.top, label, redColor, LightweightCharts.LineStyle.Solid, 1, 'aboveBar');
+            }
+            if (t.bottom !== null) {
+                const label = t.swingTrendBias === 1 ? 'Strong Low' : 'Weak Low';
+                drawSegment(t.lastBottomTime, lastTime, t.bottom, label, greenColor, LightweightCharts.LineStyle.Solid, 1, 'belowBar');
+            }
+        }
+
+        // Set all sorted markers on the main candlestick series
+        if (allMarkers.length > 0) {
+            allMarkers.sort((a, b) => {
+                const timeA = typeof a.time === 'object' && a.time !== null ? (new Date(Date.UTC(a.time.year, a.time.month - 1, a.time.day)).getTime()) : (typeof a.time === 'string' ? new Date(a.time).getTime() : a.time);
+                const timeB = typeof b.time === 'object' && b.time !== null ? (new Date(Date.UTC(b.time.year, b.time.month - 1, b.time.day)).getTime()) : (typeof b.time === 'string' ? new Date(b.time).getTime() : b.time);
+                return timeA - timeB;
+            });
+            if (LightweightCharts.createSeriesMarkers) {
+                if (!pane.markersPlugin) {
+                    pane.markersPlugin = LightweightCharts.createSeriesMarkers(pane.series, allMarkers);
+                } else {
+                    pane.markersPlugin.setMarkers(allMarkers);
+                }
+            } else {
+                pane.series.setMarkers(allMarkers);
+            }
+        }
+    }
+
+    function openSMCSettings(paneId) {
+        const pane = STATE.panes[paneId];
+        if (!pane) return;
+        activeSMCSettingsPaneId = paneId;
+
+        const cfg = pane.smcSettings || {};
+
+        document.getElementById('smc-cfg-mode').value = cfg.mode || 'Historical';
+        document.getElementById('smc-cfg-style').value = cfg.style || 'Colored';
+        
+        document.getElementById('smc-cfg-showStructure').checked = cfg.showStructure !== false;
+        document.getElementById('smc-cfg-swingsLength').value = cfg.swingsLength !== undefined ? cfg.swingsLength : 50;
+        document.getElementById('smc-cfg-showSwings').checked = !!cfg.showSwings;
+        document.getElementById('smc-cfg-showSwingBull').value = cfg.showSwingBull || 'All';
+        document.getElementById('smc-cfg-showSwingBear').value = cfg.showSwingBear || 'All';
+        document.getElementById('smc-cfg-showHighLowSwings').checked = cfg.showHighLowSwings !== false;
+
+        document.getElementById('smc-cfg-showInternals').checked = cfg.showInternals !== false;
+        document.getElementById('smc-cfg-internalFilterConfluence').checked = !!cfg.internalFilterConfluence;
+        document.getElementById('smc-cfg-showInternalBull').value = cfg.showInternalBull || 'All';
+        document.getElementById('smc-cfg-showInternalBear').value = cfg.showInternalBear || 'All';
+
+        document.getElementById('smc-cfg-showSwingOrderBlocks').checked = !!cfg.showSwingOrderBlocks;
+        document.getElementById('smc-cfg-swingOrderBlocksSize').value = cfg.swingOrderBlocksSize !== undefined ? cfg.swingOrderBlocksSize : 5;
+        document.getElementById('smc-cfg-showInternalOrderBlocks').checked = cfg.showInternalOrderBlocks !== false;
+        document.getElementById('smc-cfg-internalOrderBlocksSize').value = cfg.internalOrderBlocksSize !== undefined ? cfg.internalOrderBlocksSize : 5;
+        document.getElementById('smc-cfg-orderBlockFilter').value = cfg.orderBlockFilter || 'Atr';
+        document.getElementById('smc-cfg-orderBlockMitigation').value = cfg.orderBlockMitigation || 'High/Low';
+
+        document.getElementById('smc-cfg-showEqualHighsLows').checked = cfg.showEqualHighsLows !== false;
+        document.getElementById('smc-cfg-equalHighsLowsLength').value = cfg.equalHighsLowsLength !== undefined ? cfg.equalHighsLowsLength : 3;
+        document.getElementById('smc-cfg-equalHighsLowsThreshold').value = cfg.equalHighsLowsThreshold !== undefined ? cfg.equalHighsLowsThreshold : 0.1;
+        document.getElementById('smc-cfg-showFairValueGaps').checked = !!cfg.showFairValueGaps;
+        document.getElementById('smc-cfg-fairValueGapsThreshold').checked = cfg.fairValueGapsThreshold !== false;
+        document.getElementById('smc-cfg-fairValueGapsExtend').value = cfg.fairValueGapsExtend !== undefined ? cfg.fairValueGapsExtend : 1;
+
+        document.getElementById('smc-cfg-showPremiumDiscountZones').checked = !!cfg.showPremiumDiscountZones;
+
+        const modal = document.getElementById('smc-settings-dialog');
+        if (modal) modal.classList.remove('hidden');
+    }
+
+    function initSMCSettingsEvents() {
+        const modal = document.getElementById('smc-settings-dialog');
+        const closeBtn = document.getElementById('smc-settings-close');
+        const resetBtn = document.getElementById('smc-settings-reset');
+        const saveBtn = document.getElementById('smc-settings-save');
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                if (modal) modal.classList.add('hidden');
+                activeSMCSettingsPaneId = null;
+            });
+        }
+
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                document.getElementById('smc-cfg-mode').value = 'Historical';
+                document.getElementById('smc-cfg-style').value = 'Colored';
+                document.getElementById('smc-cfg-showStructure').checked = true;
+                document.getElementById('smc-cfg-swingsLength').value = 50;
+                document.getElementById('smc-cfg-showSwings').checked = false;
+                document.getElementById('smc-cfg-showSwingBull').value = 'All';
+                document.getElementById('smc-cfg-showSwingBear').value = 'All';
+                document.getElementById('smc-cfg-showHighLowSwings').checked = true;
+                document.getElementById('smc-cfg-showInternals').checked = true;
+                document.getElementById('smc-cfg-internalFilterConfluence').checked = false;
+                document.getElementById('smc-cfg-showInternalBull').value = 'All';
+                document.getElementById('smc-cfg-showInternalBear').value = 'All';
+                document.getElementById('smc-cfg-showSwingOrderBlocks').checked = false;
+                document.getElementById('smc-cfg-swingOrderBlocksSize').value = 5;
+                document.getElementById('smc-cfg-showInternalOrderBlocks').checked = true;
+                document.getElementById('smc-cfg-internalOrderBlocksSize').value = 5;
+                document.getElementById('smc-cfg-orderBlockFilter').value = 'Atr';
+                document.getElementById('smc-cfg-orderBlockMitigation').value = 'High/Low';
+                document.getElementById('smc-cfg-showEqualHighsLows').checked = true;
+                document.getElementById('smc-cfg-equalHighsLowsLength').value = 3;
+                document.getElementById('smc-cfg-equalHighsLowsThreshold').value = 0.1;
+                document.getElementById('smc-cfg-showFairValueGaps').checked = false;
+                document.getElementById('smc-cfg-fairValueGapsThreshold').checked = true;
+                document.getElementById('smc-cfg-fairValueGapsExtend').value = 1;
+                document.getElementById('smc-cfg-showPremiumDiscountZones').checked = false;
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                if (activeSMCSettingsPaneId === null) return;
+                const pane = STATE.panes[activeSMCSettingsPaneId];
+                if (!pane) return;
+
+                const settings = {
+                    mode: document.getElementById('smc-cfg-mode').value,
+                    style: document.getElementById('smc-cfg-style').value,
+                    showStructure: document.getElementById('smc-cfg-showStructure').checked,
+                    swingsLength: parseInt(document.getElementById('smc-cfg-swingsLength').value, 10) || 50,
+                    showSwings: document.getElementById('smc-cfg-showSwings').checked,
+                    showSwingBull: document.getElementById('smc-cfg-showSwingBull').value,
+                    showSwingBear: document.getElementById('smc-cfg-showSwingBear').value,
+                    showHighLowSwings: document.getElementById('smc-cfg-showHighLowSwings').checked,
+                    showInternals: document.getElementById('smc-cfg-showInternals').checked,
+                    internalFilterConfluence: document.getElementById('smc-cfg-internalFilterConfluence').checked,
+                    showInternalBull: document.getElementById('smc-cfg-showInternalBull').value,
+                    showInternalBear: document.getElementById('smc-cfg-showInternalBear').value,
+                    showSwingOrderBlocks: document.getElementById('smc-cfg-showSwingOrderBlocks').checked,
+                    swingOrderBlocksSize: parseInt(document.getElementById('smc-cfg-swingOrderBlocksSize').value, 10) || 5,
+                    showInternalOrderBlocks: document.getElementById('smc-cfg-showInternalOrderBlocks').checked,
+                    internalOrderBlocksSize: parseInt(document.getElementById('smc-cfg-internalOrderBlocksSize').value, 10) || 5,
+                    orderBlockFilter: document.getElementById('smc-cfg-orderBlockFilter').value,
+                    orderBlockMitigation: document.getElementById('smc-cfg-orderBlockMitigation').value,
+                    showEqualHighsLows: document.getElementById('smc-cfg-showEqualHighsLows').checked,
+                    equalHighsLowsLength: parseInt(document.getElementById('smc-cfg-equalHighsLowsLength').value, 10) || 3,
+                    equalHighsLowsThreshold: parseFloat(document.getElementById('smc-cfg-equalHighsLowsThreshold').value) || 0.1,
+                    showFairValueGaps: document.getElementById('smc-cfg-showFairValueGaps').checked,
+                    fairValueGapsThreshold: document.getElementById('smc-cfg-fairValueGapsThreshold').checked,
+                    fairValueGapsExtend: parseInt(document.getElementById('smc-cfg-fairValueGapsExtend').value, 10) || 1,
+                    showPremiumDiscountZones: document.getElementById('smc-cfg-showPremiumDiscountZones').checked
+                };
+
+                pane.smcSettings = settings;
+                SafeStorage.setItem(`ag_pane_smc_settings_${activeSMCSettingsPaneId}`, JSON.stringify(settings));
+
+                if (pane.activeIndicators['smc']) {
+                    renderSMC(pane);
+                }
+
+                if (modal) modal.classList.add('hidden');
+                activeSMCSettingsPaneId = null;
+            });
+        }
     }
 
     // ══════════════════════════════════════════════
@@ -1260,6 +1643,35 @@ function startApp() {
     function getTimeframeDurationSeconds(tf) {
         return { '1m':60,'2m':120,'5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'1d':86400 }[tf] || 300;
     }
+
+    function addTime(timeVal, durationSeconds) {
+        if (typeof timeVal === 'number') {
+            return timeVal + durationSeconds;
+        }
+        if (typeof timeVal === 'string') {
+            const date = new Date(timeVal);
+            if (!isNaN(date.getTime())) {
+                const newTime = date.getTime() + durationSeconds * 1000;
+                const newDate = new Date(newTime);
+                const yyyy = newDate.getUTCFullYear();
+                const mm = String(newDate.getUTCMonth() + 1).padStart(2, '0');
+                const dd = String(newDate.getUTCDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            }
+        }
+        if (typeof timeVal === 'object' && timeVal !== null && 'year' in timeVal) {
+            const date = new Date(Date.UTC(timeVal.year, timeVal.month - 1, timeVal.day));
+            const newTime = date.getTime() + durationSeconds * 1000;
+            const newDate = new Date(newTime);
+            return {
+                year: newDate.getUTCFullYear(),
+                month: newDate.getUTCMonth() + 1,
+                day: newDate.getUTCDate()
+            };
+        }
+        return timeVal;
+    }
+
 
     function formatPriceValue(source, price) {
         if (price == null) return '--';

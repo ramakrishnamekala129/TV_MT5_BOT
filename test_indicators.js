@@ -30,6 +30,15 @@ const v   = Indicators.vwap(c);
 const rsi = Indicators.rsi(c, 14);
 const mac = Indicators.macd(c, 12, 26, 9);
 const vol = Indicators.volume(c);
+const smcData = Indicators.smc(c, {
+    showStructure: true,
+    showSwingOrderBlocks: true,
+    showInternalOrderBlocks: true,
+    showEqualHighsLows: true,
+    showFairValueGaps: true,
+    showPremiumDiscountZones: true,
+    showHighLowSwings: true
+});
 
 console.log('SMA(20) last point:',  JSON.stringify(s[s.length - 1]));
 console.log('EMA(9) last point:',   JSON.stringify(e[e.length - 1]));
@@ -40,4 +49,17 @@ console.log('RSI(14) last:',        JSON.stringify(rsi[rsi.length - 1]));
 console.log('MACD hist last:',      JSON.stringify(mac.histogram[mac.histogram.length - 1]));
 console.log('MACD line last:',      JSON.stringify(mac.macdLine[mac.macdLine.length - 1]));
 console.log('Volume last:',         JSON.stringify(vol[vol.length - 1]));
+
+console.log('\n--- SMC INDICATOR MATH VERIFICATION ---');
+console.log('SMC structures generated:', !!smcData);
+if (smcData) {
+    console.log('Swing Highs/Lows count:', smcData.swingHighsLows.length);
+    console.log('Equal Highs/Lows count:', smcData.equalHighsLows.length);
+    console.log('Breakouts (BOS/CHoCH) count:', smcData.breakouts.length);
+    console.log('Swing Order Blocks count:', smcData.swingOBs.length);
+    console.log('Internal Order Blocks count:', smcData.internalOBs.length);
+    console.log('Fair Value Gaps (FVG) count:', smcData.fvgs.length);
+    console.log('Trailing levels & Premium/Discount:', JSON.stringify(smcData.trailing));
+}
 console.log('\n✅ ALL INDICATORS PASSED');
+

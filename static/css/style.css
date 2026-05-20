@@ -457,3 +457,206 @@ body::after {
 /* ── Utility ── */
 .bull-text { color: var(--bull-green) !important; }
 .bear-text { color: var(--bear-red)   !important; }
+
+/* ══════════════════════════════
+   SMC CUSTOM CHIP GROUP & SETTINGS PANEL
+   ══════════════════════════════ */
+.ind-chip-group {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    gap: 0;
+    transition: var(--transition-smooth);
+}
+.ind-chip-group:hover {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(0, 242, 254, 0.2);
+}
+.ind-chip-group .ind-chip {
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding-right: 5px !important;
+    box-shadow: none !important;
+}
+.ind-chip-group .ind-settings-icon {
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 2px 6px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.ind-chip-group .ind-settings-icon:hover {
+    color: var(--accent-teal);
+    background: rgba(0, 242, 254, 0.08);
+}
+.ind-chip-group.active {
+    border-color: var(--accent-teal);
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.15);
+    background: rgba(0, 242, 254, 0.05);
+}
+.ind-chip-group.active .ind-chip {
+    color: var(--accent-teal) !important;
+}
+.ind-chip-group.active .ind-settings-icon {
+    border-left-color: rgba(0, 242, 254, 0.3);
+}
+
+/* Glassmorphism Settings Modal */
+.settings-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 380px;
+    max-width: 90%;
+    max-height: 80vh;
+    background: rgba(10, 11, 16, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 242, 254, 0.05);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: var(--font-body);
+}
+.settings-modal.hidden {
+    display: none !important;
+}
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+}
+.settings-header h3 {
+    margin: 0;
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-primary);
+}
+.close-settings-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+.close-settings-btn:hover {
+    color: var(--accent-red);
+}
+
+.settings-body {
+    padding: 16px;
+    overflow-y: auto;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settings-section {
+    background: rgba(255,255,255,0.015);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 6px;
+    padding: 12px;
+}
+.settings-section h4 {
+    margin: 0 0 8px 0;
+    font-family: var(--font-heading);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--accent-teal);
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding-bottom: 4px;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.setting-row label {
+    font-weight: 500;
+}
+.setting-row input[type="number"],
+.setting-row select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 11px;
+    outline: none;
+    text-align: right;
+    transition: var(--transition-smooth);
+}
+.setting-row input[type="number"]:focus,
+.setting-row select:focus {
+    border-color: var(--accent-teal);
+    box-shadow: 0 0 5px rgba(0, 242, 254, 0.2);
+}
+.setting-row input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: var(--accent-teal);
+}
+
+.settings-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.settings-footer button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+.btn-primary {
+    background: var(--accent-teal);
+    border: 1px solid var(--accent-teal);
+    color: #0b0c10;
+}
+.btn-primary:hover {
+    background: transparent;
+    color: var(--accent-teal);
+    box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+}
+.btn-secondary {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-secondary);
+}
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}

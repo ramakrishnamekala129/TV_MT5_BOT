@@ -122,6 +122,17 @@ The backend exposes a developer-friendly REST API for custom integrations:
 
 ---
 
+## 📘 Developer & System Reference Documentation
+
+For detailed guides covering each aspect of the codebase, please refer to the comprehensive developer documentation:
+
+*   **📖 Core Developer Manual**: [DEVELOPER_DOCUMENTATION.md](file:///d:/TV_MT5_BOT/DEVELOPER_DOCUMENTATION.md) — File mappings, styling variables, glassmorphism tokens, and code quality workflows.
+*   **🏛️ System Architecture**: [docs/ARCHITECTURE.md](file:///d:/TV_MT5_BOT/docs/ARCHITECTURE.md) — Grid scaling lifecycles, time-scale synchronizations, data ingestion flows, and interactive trading coordinate formulas.
+*   **📐 Indicators & SMC Math**: [docs/QUANTITATIVE_INDICATORS.md](file:///d:/TV_MT5_BOT/docs/QUANTITATIVE_INDICATORS.md) — Theoretical formulas, calculations, sliding swing pivot logic, and how we resolved standard charting rendering crashes.
+*   **🔌 API & Broker Integrations**: [docs/API_AND_INTEGRATION.md](file:///d:/TV_MT5_BOT/docs/API_AND_INTEGRATION.md) — Complete REST API reference, MT5 Win32 bridge protocols, Hyperliquid REST/WS configurations, and yfinance intervals.
+
+---
+
 ## 🛡️ License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

@@ -25,11 +25,11 @@
     <script src="/static/js/lightweight-charts.standalone.production.js"></script>
 
     <!-- Pure JS Technical Indicators Engine -->
-    <script src="/static/js/indicators.js"></script>
+    <script src="/static/js/indicators.js?v=1.2.0"></script>
 
     <!-- Local Custom Premium Stylesheets -->
-    <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/css/trading.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.2.0">
+    <link rel="stylesheet" href="/static/css/trading.css?v=1.2.0">
 </head>
 <body>
     <div class="dashboard-wrapper">
@@ -116,6 +116,10 @@
                 <button class="ind-chip" data-indicator="ema21"     title="Exponential Moving Average 21">EMA 21</button>
                 <button class="ind-chip" data-indicator="bb20"      title="Bollinger Bands 20,2">BB(20)</button>
                 <button class="ind-chip" data-indicator="vwap"      title="Volume Weighted Average Price">VWAP</button>
+                <div class="ind-chip-group">
+                    <button class="ind-chip" data-indicator="smc" title="Smart Money Concepts [LuxAlgo]">SMC</button>
+                    <button class="ind-settings-icon" data-indicator="smc" title="SMC Settings">⚙️</button>
+                </div>
 
                 <div class="ind-separator"></div>
 
@@ -186,7 +190,172 @@
         <div class="menu-item" id="cmenu-close-menu">Close Menu</div>
     </div>
 
+    <!-- SMC Settings Dialog -->
+    <div id="smc-settings-dialog" class="settings-modal hidden glass-effect">
+        <div class="settings-header">
+            <h3>⚙️ SMC Settings</h3>
+            <button class="close-settings-btn" id="smc-settings-close">✕</button>
+        </div>
+        <div class="settings-body">
+            <div class="settings-section">
+                <h4>General Settings</h4>
+                <div class="setting-row">
+                    <label for="smc-cfg-mode">Mode</label>
+                    <select id="smc-cfg-mode" class="custom-select-sm">
+                        <option value="Historical">Historical</option>
+                        <option value="Present">Present</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-style">Style</label>
+                    <select id="smc-cfg-style" class="custom-select-sm">
+                        <option value="Colored">Colored</option>
+                        <option value="Monochrome">Monochrome</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h4>Swing Structure</h4>
+                <div class="setting-row">
+                    <label for="smc-cfg-showStructure">Show Swing Structure</label>
+                    <input type="checkbox" id="smc-cfg-showStructure" checked>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-swingsLength">Swing Length</label>
+                    <input type="number" id="smc-cfg-swingsLength" value="50" min="10" max="200" step="5">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showSwings">Show Swings Points</label>
+                    <input type="checkbox" id="smc-cfg-showSwings">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showSwingBull">Bullish Structure</label>
+                    <select id="smc-cfg-showSwingBull" class="custom-select-sm">
+                        <option value="All">All</option>
+                        <option value="BOS">BOS</option>
+                        <option value="CHoCH">CHoCH</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showSwingBear">Bearish Structure</label>
+                    <select id="smc-cfg-showSwingBear" class="custom-select-sm">
+                        <option value="All">All</option>
+                        <option value="BOS">BOS</option>
+                        <option value="CHoCH">CHoCH</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showHighLowSwings">Strong/Weak High/Low</label>
+                    <input type="checkbox" id="smc-cfg-showHighLowSwings" checked>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h4>Internal Structure</h4>
+                <div class="setting-row">
+                    <label for="smc-cfg-showInternals">Show Internal Structure</label>
+                    <input type="checkbox" id="smc-cfg-showInternals" checked>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-internalFilterConfluence">Confluence Filter</label>
+                    <input type="checkbox" id="smc-cfg-internalFilterConfluence">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showInternalBull">Bullish Structure</label>
+                    <select id="smc-cfg-showInternalBull" class="custom-select-sm">
+                        <option value="All">All</option>
+                        <option value="BOS">BOS</option>
+                        <option value="CHoCH">CHoCH</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showInternalBear">Bearish Structure</label>
+                    <select id="smc-cfg-showInternalBear" class="custom-select-sm">
+                        <option value="All">All</option>
+                        <option value="BOS">BOS</option>
+                        <option value="CHoCH">CHoCH</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h4>Order Blocks</h4>
+                <div class="setting-row">
+                    <label for="smc-cfg-showSwingOrderBlocks">Swing Order Blocks</label>
+                    <input type="checkbox" id="smc-cfg-showSwingOrderBlocks">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-swingOrderBlocksSize">Swing OB Size</label>
+                    <input type="number" id="smc-cfg-swingOrderBlocksSize" value="5" min="1" max="20">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showInternalOrderBlocks">Internal Order Blocks</label>
+                    <input type="checkbox" id="smc-cfg-showInternalOrderBlocks" checked>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-internalOrderBlocksSize">Internal OB Size</label>
+                    <input type="number" id="smc-cfg-internalOrderBlocksSize" value="5" min="1" max="20">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-orderBlockFilter">Filter Method</label>
+                    <select id="smc-cfg-orderBlockFilter" class="custom-select-sm">
+                        <option value="Atr">ATR</option>
+                        <option value="Range">Cumulative Range</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-orderBlockMitigation">Mitigation Source</label>
+                    <select id="smc-cfg-orderBlockMitigation" class="custom-select-sm">
+                        <option value="High/Low">High/Low</option>
+                        <option value="Close">Close</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h4>Equal Highs/Lows & FVGs</h4>
+                <div class="setting-row">
+                    <label for="smc-cfg-showEqualHighsLows">Equal High/Low</label>
+                    <input type="checkbox" id="smc-cfg-showEqualHighsLows" checked>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-equalHighsLowsLength">Bars Confirmation</label>
+                    <input type="number" id="smc-cfg-equalHighsLowsLength" value="3" min="1" max="10">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-equalHighsLowsThreshold">EQ Threshold</label>
+                    <input type="number" id="smc-cfg-equalHighsLowsThreshold" value="0.1" min="0" max="0.5" step="0.05">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-showFairValueGaps">Fair Value Gaps</label>
+                    <input type="checkbox" id="smc-cfg-showFairValueGaps">
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-fairValueGapsThreshold">Auto FVG Threshold</label>
+                    <input type="checkbox" id="smc-cfg-fairValueGapsThreshold" checked>
+                </div>
+                <div class="setting-row">
+                    <label for="smc-cfg-fairValueGapsExtend">Extend FVG Bars</label>
+                    <input type="number" id="smc-cfg-fairValueGapsExtend" value="1" min="0" max="20">
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h4>Zones</h4>
+                <div class="setting-row">
+                    <label for="smc-cfg-showPremiumDiscountZones">Premium/Discount Zones</label>
+                    <input type="checkbox" id="smc-cfg-showPremiumDiscountZones">
+                </div>
+            </div>
+        </div>
+        <div class="settings-footer">
+            <button id="smc-settings-reset" class="btn-secondary">Reset</button>
+            <button id="smc-settings-save" class="btn-primary">Apply</button>
+        </div>
+    </div>
+
     <!-- App Coordinator -->
-    <script src="/static/js/chart_manager.js"></script>
+    <script src="/static/js/chart_manager.js?v=1.2.0"></script>
 </body>
 </html>
