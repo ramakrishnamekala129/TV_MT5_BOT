@@ -6,7 +6,7 @@ This document provides a comprehensive mathematical and algorithmic reference fo
 
 ## 📈 Architecture Rationale
 
-All technical and market structure indicators in Antigravity are computed directly on the client side using pure, modern ES6 JavaScript.
+All technical and market structure indicators in Quant Trading are computed directly on the client side using pure, modern ES6 JavaScript.
 
 ### Key Advantages:
 1. **Zero Server Compute Overheads**: Processing hundreds of candles across multiple panes and timeframes requires significant CPU resources. Running this client-side keeps the backend proxy server extremely lightweight.
@@ -36,17 +36,34 @@ Calculates a weighted average where weights decrease exponentially for older val
 $$\alpha = \frac{2}{N+1}$$
 $$\text{EMA}_i = (\text{Close}_i \times \alpha) + (\text{EMA}_{i-1} \times (1 - \alpha))$$
 
-### 3. Bollinger Bands (BB)
+### 3. Weighted Moving Average (WMA)
+Weights newer closes more heavily than older closes:
+$$\text{WMA}_i = \frac{\sum_{j=0}^{N-1} \text{Close}_{i-j}(N-j)}{\frac{N(N+1)}{2}}$$
+
+### 4. Hull Moving Average (HMA)
+Reduces lag by combining weighted moving averages:
+$$\text{HMA}_N = \text{WMA}_{\sqrt{N}}(2 \times \text{WMA}_{N/2} - \text{WMA}_N)$$
+
+### 5. Bollinger Bands (BB)
 Measures market volatility. Consists of a Middle Band (SMA), and Upper/Lower Bands offset by a standard deviation multiplier ($K$, typically 2):
 $$\mu_i = \text{SMA}_i(20)$$
 $$\sigma_i = \sqrt{\frac{1}{N} \sum_{j=0}^{N-1} (\text{Close}_{i-j} - \mu_i)^2}$$
 $$\text{Upper Band}_i = \mu_i + K\sigma_i$$
 $$\text{Lower Band}_i = \mu_i - K\sigma_i$$
 
-### 4. Volume Weighted Average Price (VWAP)
+### 6. Volume Weighted Average Price (VWAP)
 Intraday VWAP tracks the true average price scaled by transaction volumes:
 $$\text{VWAP}_i = \frac{\sum_{k=0}^{i} (\text{Typical Price}_k \times \text{Volume}_k)}{\sum_{k=0}^{i} \text{Volume}_k}$$
 Where $\text{Typical Price}_k = \frac{\text{High}_k + \text{Low}_k + \text{Close}_k}{3}$.
+
+### 7. Ichimoku Cloud
+Calculates conversion, base, and cloud spans from period high/low midpoints:
+$$\text{Tenkan} = \frac{\max(H_9) + \min(L_9)}{2}$$
+$$\text{Kijun} = \frac{\max(H_{26}) + \min(L_{26})}{2}$$
+$$\text{SpanB} = \frac{\max(H_{52}) + \min(L_{52})}{2}$$
+
+### 8. Supertrend
+Uses ATR bands to follow trend direction. The engine calculates an ATR-based upper/lower band and flips trend when close crosses the active trailing band.
 
 ---
 
@@ -64,6 +81,48 @@ Calculates directional momentum by subtracting a slow EMA from a fast EMA.
 $$\text{MACD Line}_i = \text{EMA}_i(12) - \text{EMA}_i(26)$$
 $$\text{Signal Line}_i = \text{EMA}_i(\text{MACD Line}, 9)$$
 $$\text{Histogram}_i = \text{MACD Line}_i - \text{Signal Line}_i$$
+
+### 3. Stochastic Oscillator
+Compares close against the recent high/low range:
+$$\%K = 100 \times \frac{Close - LowestLow_N}{HighestHigh_N - LowestLow_N}$$
+The displayed `%K` and `%D` lines are smoothed with moving averages.
+
+### 4. Commodity Channel Index (CCI)
+Measures deviation from the typical price average:
+$$CCI = \frac{TP - SMA(TP)}{0.015 \times MeanDeviation}$$
+
+### 5. Momentum and Rate of Change
+Momentum plots the absolute difference from `N` bars ago. ROC plots the percentage change over `N` bars:
+$$ROC = \frac{Close_i - Close_{i-N}}{Close_{i-N}} \times 100$$
+
+### 6. ATR, ADX, OBV, and Volume
+- **ATR** measures average true range for volatility.
+- **ADX** renders ADX, +DI, and -DI lines for trend strength.
+- **OBV** accumulates volume based on close direction.
+- **Volume** renders color-coded volume bars in a resizable sub-panel.
+
+---
+
+## Indicator Library and Runtime Settings
+
+`static/js/chart_manager.js` defines built-in indicators through `INDICATOR_DEFS`. Each definition includes:
+- `name` and `short` labels.
+- `category` for the indicator library grouping.
+- `kind`: `overlay` for the main chart or `panel` for oscillator sub-panels.
+- `defaults`: period, color, threshold, and width defaults.
+- `fields`: editable settings shown in the indicator library modal.
+
+Per-pane indicator state is stored in browser storage:
+- Active indicators: `ag_pane_indicators_<paneId>`.
+- Indicator settings: `ag_pane_indicator_settings_<paneId>`.
+- Indicator visibility: `ag_pane_indicator_visibility_<paneId>`.
+- Oscillator panel height: `ag_pane_oscillator_sizes_<paneId>`.
+
+The active indicator legend behaves like TradingView:
+- Hide/show toggles visibility without deleting the indicator or settings.
+- Settings opens the indicator library focused on the selected indicator.
+- Delete removes the indicator from the pane.
+- Hidden panel indicators remain in the main legend so they can be shown again.
 
 ---
 

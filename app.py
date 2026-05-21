@@ -49,11 +49,13 @@ def historical():
       - symbol: e.g. EURUSD, RELIANCE.NS, BTC
       - timeframe: 1m, 5m, 15m, 1h, 4h, 1d (default: 5m)
       - limit: int (default: 300)
+      - before: unix timestamp in seconds; fetches candles older than this point
     """
     source = request.args.get('source')
     symbol = request.args.get('symbol')
     timeframe = request.args.get('timeframe', '5m')
     limit_str = request.args.get('limit', '300')
+    before_str = request.args.get('before')
 
     if not source or not symbol:
         return jsonify({"error": "Missing 'source' or 'symbol' parameter."}), 400
@@ -63,10 +65,17 @@ def historical():
     except ValueError:
         limit = 300
 
-    logger.info(f"Fetching historical candles: Source={source}, Symbol={symbol}, Timeframe={timeframe}, Limit={limit}")
+    before = None
+    if before_str:
+        try:
+            before = int(float(before_str))
+        except ValueError:
+            before = None
+
+    logger.info(f"Fetching historical candles: Source={source}, Symbol={symbol}, Timeframe={timeframe}, Limit={limit}, Before={before}")
 
     try:
-        candles = data_source.get_historical_candles(source, symbol, timeframe, limit)
+        candles = data_source.get_historical_candles(source, symbol, timeframe, limit, before)
         return jsonify(candles)
     except Exception as e:
         logger.error(f"Error fetching historical candles: {e}")

@@ -56,6 +56,7 @@ Fetches historical OHLCV candle arrays.
   - `symbol`: Target asset ticker.
   - `timeframe`: `1m`, `5m`, `15m`, `1h`, `4h`, `1d`
   - `limit`: Count of bars (default: 300)
+  - `before`: Optional Unix timestamp in seconds. When provided, the backend returns candles older than this timestamp for chart backfill while dragging left.
 - **Response**:
   ```json
   [
@@ -69,6 +70,11 @@ Fetches historical OHLCV candle arrays.
     }
   ]
   ```
+
+Backfill behavior by provider:
+- **MT5**: Uses `copy_rates_from()` with `date_to = before - 1`.
+- **Yahoo Finance**: Builds a historical window ending before the requested timestamp, constrained by Yahoo interval limits.
+- **Hyperliquid**: Sends a `candleSnapshot` request with `endTime = before * 1000 - 1`.
 
 #### `GET /api/live`
 Fetches real-time price updates (polling fallback).
@@ -189,7 +195,7 @@ The Python script `data_source.py` uses the official standard `MetaTrader5` libr
   Real-time ticks feed instantly into the series, completely bypassing the Python Flask proxy for Crypto assets.
 
 ### 3. Yahoo Finance Data Feed
-- **Ticker Structure**: Antigravity connects directly to the standard Yahoo Finance scraper library `yfinance`. Indian stock assets require standard NSE suffixes (e.g. `RELIANCE.NS`, `INFY.NS`).
+- **Ticker Structure**: Quant Trading connects directly to the standard Yahoo Finance scraper library `yfinance`. Indian stock assets require standard NSE suffixes (e.g. `RELIANCE.NS`, `INFY.NS`).
 - **Data Limits**: Since yfinance pulls historical data blocks, periods are dynamically calibrated based on selected timeframes to reduce API load:
   - `1m` to `5m` timeframes request a 1-day history window.
   - `15m` to `30m` request a 5-day history window.

@@ -38,7 +38,7 @@
         <header class="main-header glass-effect">
             <div class="header-branding">
                 <div class="glow-indicator"></div>
-                <h1>ANTIGRAVITY <span>// QUANT TRADING GRID</span></h1>
+                <h1>QUANT TRADING</h1>
             </div>
 
             <div class="header-controls">
@@ -107,42 +107,47 @@
             </div>
 
             <!-- ── Indicator Toolbar ── -->
-            <div class="indicator-toolbar">
-                <!-- Overlays -->
-                <span class="ind-group-label">OVERLAYS</span>
-                <button class="ind-chip" data-indicator="sma20"     title="Simple Moving Average 20">SMA 20</button>
-                <button class="ind-chip" data-indicator="sma50"     title="Simple Moving Average 50">SMA 50</button>
-                <button class="ind-chip" data-indicator="ema9"      title="Exponential Moving Average 9">EMA 9</button>
-                <button class="ind-chip" data-indicator="ema21"     title="Exponential Moving Average 21">EMA 21</button>
-                <button class="ind-chip" data-indicator="bb20"      title="Bollinger Bands 20,2">BB(20)</button>
-                <button class="ind-chip" data-indicator="vwap"      title="Volume Weighted Average Price">VWAP</button>
-                <div class="ind-chip-group">
-                    <button class="ind-chip" data-indicator="smc" title="Smart Money Concepts [LuxAlgo]">SMC</button>
-                    <button class="ind-settings-icon" data-indicator="smc" title="SMC Settings">⚙️</button>
+            <div class="indicator-toolbar" aria-label="Chart analysis toolbar">
+                <div class="ind-section ind-section-primary">
+                    <span class="ind-group-label">Indicators</span>
+                    <button class="indicator-library-btn" title="Open indicator library" aria-label="Open indicator library">+</button>
+                    <button class="ind-chip" data-indicator="sma20"     title="Simple Moving Average 20">SMA 20</button>
+                    <button class="ind-chip" data-indicator="sma50"     title="Simple Moving Average 50">SMA 50</button>
+                    <button class="ind-chip" data-indicator="ema9"      title="Exponential Moving Average 9">EMA 9</button>
+                    <button class="ind-chip" data-indicator="ema21"     title="Exponential Moving Average 21">EMA 21</button>
+                    <button class="ind-chip" data-indicator="bb20"      title="Bollinger Bands 20,2">BB</button>
+                    <button class="ind-chip" data-indicator="vwap"      title="Volume Weighted Average Price">VWAP</button>
+                    <div class="ind-chip-group">
+                        <button class="ind-chip" data-indicator="smc" title="Smart Money Concepts [LuxAlgo]">SMC</button>
+                        <button class="ind-settings-icon" data-indicator="smc" title="SMC Settings" aria-label="SMC Settings">&#9881;</button>
+                    </div>
                 </div>
 
                 <div class="ind-separator"></div>
 
-                <!-- Oscillators -->
-                <span class="ind-group-label">OSCILLATORS</span>
-                <button class="ind-chip" data-indicator="rsi14"     title="RSI 14">RSI 14</button>
-                <button class="ind-chip" data-indicator="macd"      title="MACD 12,26,9">MACD</button>
-                <button class="ind-chip" data-indicator="volume"    title="Volume Bars">VOL</button>
+                <div class="ind-section">
+                    <span class="ind-group-label">Panels</span>
+                    <button class="ind-chip" data-indicator="rsi14"     title="RSI 14">RSI</button>
+                    <button class="ind-chip" data-indicator="macd"      title="MACD 12,26,9">MACD</button>
+                    <button class="ind-chip" data-indicator="volume"    title="Volume Bars">VOL</button>
+                </div>
 
                 <div class="ind-separator"></div>
 
-                <!-- Drawing Tools -->
-                <span class="ind-group-label">TOOLS</span>
-                <button class="tool-chip" data-tool="hline"    title="Horizontal Line">—</button>
-                <button class="tool-chip" data-tool="tline"    title="Trend Line">↗</button>
-                <button class="tool-chip" data-tool="rect"     title="Rectangle / Box">▭</button>
-                <button class="tool-chip tool-erase" data-tool="erase" title="Erase last drawing">✕</button>
+                <div class="ind-section ind-section-tools">
+                    <span class="ind-group-label">Draw</span>
+                    <button class="tool-chip" data-tool="hline"    title="Horizontal Line" aria-label="Horizontal Line">—</button>
+                    <button class="tool-chip" data-tool="tline"    title="Trend Line" aria-label="Trend Line">↗</button>
+                    <button class="tool-chip" data-tool="rect"     title="Rectangle / Box" aria-label="Rectangle / Box">▭</button>
+                    <button class="tool-chip tool-erase" data-tool="erase" title="Erase last drawing" aria-label="Erase last drawing">✕</button>
+                </div>
             </div>
 
             <!-- ── Main Chart Mount ── -->
             <div class="chart-mount">
                 <!-- Interactive layer for MT5 draggable trading badges -->
                 <div class="trading-overlay-container"></div>
+                <div class="indicator-legend" aria-label="Active chart indicators"></div>
                 
                 <div class="pane-loading-overlay">
                     <div class="spinner"></div>
@@ -174,6 +179,34 @@
         <option value="AUDUSD">AUDUSD (MT5)</option>
         <option value="XAUUSD">XAUUSD / GOLD (MT5)</option>
     </datalist>
+
+    <!-- TradingView-style Indicator Library -->
+    <div id="indicator-library-dialog" class="indicator-library-modal hidden glass-effect" role="dialog" aria-modal="true" aria-labelledby="indicator-library-title">
+        <div class="indicator-library-header">
+            <div>
+                <h3 id="indicator-library-title">Indicators</h3>
+                <span id="indicator-library-pane-label">Pane #1</span>
+            </div>
+            <button class="close-settings-btn" id="indicator-library-close" aria-label="Close indicator library">✕</button>
+        </div>
+        <div class="indicator-library-search-row">
+            <input type="search" id="indicator-library-search" placeholder="Search indicators" autocomplete="off">
+        </div>
+        <div class="indicator-library-body">
+            <div class="indicator-list" id="indicator-library-list"></div>
+            <div class="indicator-settings-panel">
+                <div class="indicator-settings-title">
+                    <h4 id="indicator-settings-name">Select an indicator</h4>
+                    <span id="indicator-settings-category">Built-ins</span>
+                </div>
+                <div id="indicator-settings-fields" class="indicator-settings-fields"></div>
+                <div class="indicator-settings-actions">
+                    <button id="indicator-library-remove" class="btn-secondary">Remove</button>
+                    <button id="indicator-library-apply" class="btn-primary">Add / Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Global Context Menu for Trading -->
     <div id="chart-context-menu" class="context-menu hidden">

@@ -1,11 +1,11 @@
-# Antigravity // Developer Manual & Codebase Guide
+# Quant Trading Developer Manual & Codebase Guide
 
-Welcome to the **Antigravity // Quant Trading Grid** Developer Manual. This guide provides a detailed overview of the codebase, developer setup workflows, stylesheet structures, and system directory maps.
+Welcome to the **Quant Trading** developer manual. This guide provides a practical overview of the codebase, local setup, chart UX architecture, stylesheet structure, and verification workflow.
 
 For in-depth sub-module specifications, see the links below:
-- 🏛️ [System Architecture & Lifecycle Management](file:///d:/TV_MT5_BOT/docs/ARCHITECTURE.md)
-- 📐 [Quantitative Indicators Engine & SMC Math](file:///d:/TV_MT5_BOT/docs/QUANTITATIVE_INDICATORS.md)
-- 🔌 [REST API Reference & Broker Integrations](file:///d:/TV_MT5_BOT/docs/API_AND_INTEGRATION.md)
+- [System Architecture & Lifecycle Management](docs/ARCHITECTURE.md)
+- [Quantitative Indicators Engine & SMC Math](docs/QUANTITATIVE_INDICATORS.md)
+- [REST API Reference & Broker Integrations](docs/API_AND_INTEGRATION.md)
 
 ---
 
@@ -22,13 +22,13 @@ TV_MT5_BOT/
 │   ├── QUANTITATIVE_INDICATORS.md
 │   └── API_AND_INTEGRATION.md
 ├── templates/
-│   └── index.html              # Core HTML structure, settings models & templates
+│   └── index.html              # Core HTML template, toolbar, chart pane template, modals
 └── static/
     ├── css/
     │   ├── style.css           # Outfits variables, grid layouts & glassmorphism tokens
     │   └── trading.css         # Trading badges, context menus & draggable overlay rules
     └── js/
-        ├── chart_manager.js    # Multi-pane grid orchestrator, chart sync & trading hooks
+        ├── chart_manager.js    # Multi-pane grid, backfill, indicators, legends, chart sync & trading hooks
         ├── indicators.js       # Core Javascript technical indicators & SMC calculator
         └── lightweight-charts.standalone.production.js # TradingView Charting Engine (v5.2.0)
 ```
@@ -64,28 +64,25 @@ Navigate your browser to **`http://localhost:3000`** to interact with the multi-
 
 ---
 
-## 🎨 Visual System & Glassmorphism Tokens
+## Visual System & Toolbar UX
 
-The stylesheet `static/css/style.css` builds an immersive, high-end dark-mode visual interface styled around glassmorphic principles.
+The stylesheet `static/css/style.css` builds the dark dashboard shell, chart pane layout, TradingView-style toolbar, indicator library modal, active indicator legends, and resizable oscillator panels.
 
 ### Custom Styling Tokens (CSS Variables)
-Styling relies on standard CSS tokens. Do not define ad-hoc hex values; always inherit from this custom palette:
+Core styling uses tokens from `:root`:
 
 ```css
 :root {
-    --bg-dark: #0a0b0d;               /* Deep charcoal backing */
-    --panel-bg: rgba(20, 24, 33, 0.6); /* Translucent glass body */
-    --panel-border: rgba(255, 255, 255, 0.08); /* Clean sharp limits */
-    --text-primary: #f0f3f6;          /* High contrast text */
-    --text-secondary: #878b94;        /* Muted labels */
-    
-    /* Harmonious HSL Tailored Colors */
-    --color-green: #089981;           /* Emerald Bullish */
-    --color-red: #F23645;             /* Scarlet Bearish */
-    --color-blue: #2196F3;            /* Accent Highlight */
-    
-    --font-display: 'Outfit', sans-serif;
-    --font-sans: 'Inter', sans-serif;
+    --bg-dark: rgb(10, 11, 15);
+    --bg-panel: rgba(22, 26, 37, 0.55);
+    --accent-teal: #00F2FE;
+    --accent-purple: #7B2CBF;
+    --bull-green: #00E676;
+    --bear-red: #FF1744;
+    --text-primary: #F8F9FA;
+    --text-secondary: #909296;
+    --font-heading: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
 }
 ```
 
@@ -99,7 +96,9 @@ Styling relies on standard CSS tokens. Do not define ad-hoc hex values; always i
        border-radius: 8px;
    }
    ```
-2. **Interactive Toggles**: Action chips (`.ind-chip`, `.tool-chip`) utilize subtle transitions (`all 0.2s cubic-bezier(0.4, 0, 0.2, 1)`) and high-end hover responses for premium micro-animations.
+2. **TradingView-style toolbar**: `.indicator-toolbar`, `.ind-chip`, `.indicator-library-btn`, and `.ind-chip-group` use compact dark styling with horizontal overflow for dense chart workflows.
+3. **Indicator legends**: `.indicator-legend` and `.oscillator-label` expose active indicator actions. Keep `pointer-events: auto` on the legend so hide/settings/delete buttons remain clickable above the chart canvas.
+4. **Resizable panels**: `.oscillator-resize-handle` owns panel drag affordances. Height persistence is handled in `chart_manager.js`.
 
 ---
 
@@ -107,5 +106,7 @@ Styling relies on standard CSS tokens. Do not define ad-hoc hex values; always i
 
 When implementing changes or new indicators in the quantitative grid:
 1. **Mathematics Validation**: Run `node test_indicators.js` to automatically verify calculations against standard synthetic arrays.
-2. **Monotonic Ordering Constraint**: Ensure any data injected into Lightweight Charts series flows chronologically (`time` values must be strictly sorted ascending).
-3. **No Cache Dispatches**: The Flask server forces no-cache headers in development. Ensure assets are queried with cache-busting version params (e.g. `style.css?v=1.2.0`) to immediately propagate client-side rendering updates.
+2. **Syntax Validation**: Run `node --check static/js/chart_manager.js` and `node --check static/js/indicators.js` after JavaScript edits.
+3. **Browser Verification**: Reload `http://127.0.0.1:3000`, confirm the toolbar, indicator library, legends, backfill, and oscillator resize behavior visually.
+4. **Monotonic Ordering Constraint**: Ensure any data injected into Lightweight Charts series flows chronologically (`time` values must be strictly sorted ascending).
+5. **No Cache Dispatches**: The Flask server forces no-cache headers in development. Ensure asset query versions in `templates/index.html` are bumped when browser cache behavior becomes ambiguous.

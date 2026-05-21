@@ -124,18 +124,19 @@ class DataSourceManager:
         }
         return mapping.get(tf_str, mt5.TIMEFRAME_M5)
 
-    def get_historical_candles(self, source, symbol, timeframe="5m", limit=100):
+    def get_historical_candles(self, source, symbol, timeframe="5m", limit=100, before=None):
         """
         Unified historical data fetching.
         Returns a list of candles: [{'time': timestamp_sec, 'open': o, 'high': h, 'low': l, 'close': c, 'volume': v}]
+        If before is provided, returns candles older than that unix timestamp.
         """
         source = source.lower()
         if source == "mt5":
-            return self._fetch_mt5_candles(symbol, timeframe, limit)
+            return self._fetch_mt5_candles(symbol, timeframe, limit, before)
         elif source == "yfinance":
-            return self._fetch_yfinance_candles(symbol, timeframe, limit)
+            return self._fetch_yfinance_candles(symbol, timeframe, limit, before)
         elif source == "hyperliquid":
-            return self._fetch_hyperliquid_candles(symbol, timeframe, limit)
+            return self._fetch_hyperliquid_candles(symbol, timeframe, limit, before)
         else:
             logger.error(f"Unsupported data source requested: {source}")
             return []
@@ -158,7 +159,7 @@ class DataSourceManager:
     # ==========================================
     # MetaTrader 5 Implementation
     # ==========================================
-    def _fetch_mt5_candles(self, symbol, timeframe, limit):
+    def _fetch_mt5_candles(self, symbol, timeframe, limit, before=None):
         if not self.initialize_mt5():
             logger.warning("MT5 not initialized. Returning empty list.")
             return []
@@ -173,8 +174,12 @@ class DataSourceManager:
             logger.error(f"Failed to select symbol '{symbol}' in MT5 Market Watch.")
             return []
 
-        # Fetch rates from current position back
-        rates = mt5.copy_rates_from_pos(symbol, mt5_tf, 0, limit)
+        if before:
+            date_to = datetime.datetime.fromtimestamp(before - 1)
+            rates = mt5.copy_rates_from(symbol, mt5_tf, date_to, limit)
+        else:
+            # Fetch rates from current position back
+            rates = mt5.copy_rates_from_pos(symbol, mt5_tf, 0, limit)
         if rates is None or len(rates) == 0:
             logger.error(f"No rates returned from MT5 for {symbol}. Error: {mt5.last_error()}")
             return []
@@ -443,7 +448,23 @@ class DataSourceManager:
     # ==========================================
     # yfinance Implementation
     # ==========================================
-    def _fetch_yfinance_candles(self, symbol, timeframe, limit):
+    def _estimate_yfinance_start(self, end_dt, interval, limit):
+        interval_seconds = {
+            "1m": 60,
+            "2m": 2 * 60,
+            "5m": 5 * 60,
+            "15m": 15 * 60,
+            "30m": 30 * 60,
+            "60m": 60 * 60,
+            "1h": 60 * 60,
+            "1d": 24 * 60 * 60,
+        }.get(interval, 5 * 60)
+
+        # Pad for weekends, market holidays, and sparse intraday sessions.
+        padded_seconds = interval_seconds * max(limit * 4, limit + 50)
+        return end_dt - datetime.timedelta(seconds=padded_seconds)
+
+    def _fetch_yfinance_candles(self, symbol, timeframe, limit, before=None):
         if not YFINANCE_AVAILABLE:
             logger.error("yfinance package is not installed.")
             return []
@@ -467,7 +488,12 @@ class DataSourceManager:
 
         try:
             ticker = yf.Ticker(symbol)
-            df = ticker.history(period=period, interval=yf_interval)
+            if before:
+                end_dt = datetime.datetime.fromtimestamp(before - 1, datetime.timezone.utc)
+                start_dt = self._estimate_yfinance_start(end_dt, yf_interval, limit)
+                df = ticker.history(start=start_dt, end=end_dt, interval=yf_interval)
+            else:
+                df = ticker.history(period=period, interval=yf_interval)
             if df.empty:
                 logger.warning(f"No yfinance data found for {symbol} with interval {yf_interval}.")
                 return []
@@ -533,7 +559,7 @@ class DataSourceManager:
     # ==========================================
     # Hyperliquid Implementation
     # ==========================================
-    def _fetch_hyperliquid_candles(self, symbol, timeframe, limit):
+    def _fetch_hyperliquid_candles(self, symbol, timeframe, limit, before=None):
         """
         Fetches historical candles from Hyperliquid's public API.
         """
@@ -557,8 +583,10 @@ class DataSourceManager:
             "4h": 4 * 60 * 60 * 1000,
             "1d": 24 * 60 * 60 * 1000
         }
-        duration = tf_ms_mapping.get(hl_tf, 5 * 60 * 1000) * limit
-        start_ms = now_ms - duration
+        tf_ms = tf_ms_mapping.get(hl_tf, 5 * 60 * 1000)
+        end_ms = (int(before) * 1000) - 1 if before else now_ms
+        duration = tf_ms * limit
+        start_ms = max(0, end_ms - duration)
 
         payload = {
             "type": "candleSnapshot",
@@ -566,7 +594,7 @@ class DataSourceManager:
                 "coin": symbol.upper(),
                 "interval": hl_tf,
                 "startTime": start_ms,
-                "endTime": now_ms
+                "endTime": end_ms
             }
         }
 

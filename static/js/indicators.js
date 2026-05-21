@@ -43,6 +43,54 @@ var Indicators = (() => {
     }
 
     // ─────────────────────────────────────────────
+    // WMA / HMA — Weighted and Hull Moving Averages
+    // ─────────────────────────────────────────────
+    function wma(candles, period) {
+        if (candles.length < period) return [];
+        const denom = period * (period + 1) / 2;
+        const result = [];
+        for (let i = period - 1; i < candles.length; i++) {
+            let weighted = 0;
+            for (let j = 0; j < period; j++) {
+                weighted += candles[i - j].close * (period - j);
+            }
+            result.push({ time: candles[i].time, value: weighted / denom });
+        }
+        return result;
+    }
+
+    function wmaValues(values, period) {
+        if (values.length < period) return [];
+        const denom = period * (period + 1) / 2;
+        const result = [];
+        for (let i = period - 1; i < values.length; i++) {
+            let weighted = 0;
+            for (let j = 0; j < period; j++) {
+                weighted += values[i - j] * (period - j);
+            }
+            result.push(weighted / denom);
+        }
+        return result;
+    }
+
+    function hma(candles, period = 20) {
+        if (candles.length < period) return [];
+        const closes = candles.map(c => c.close);
+        const half = Math.max(1, Math.floor(period / 2));
+        const sqrtPeriod = Math.max(1, Math.floor(Math.sqrt(period)));
+        const wmaHalf = wmaValues(closes, half);
+        const wmaFull = wmaValues(closes, period);
+        const offset = period - half;
+        const raw = wmaFull.map((full, i) => (2 * wmaHalf[i + offset]) - full);
+        const smooth = wmaValues(raw, sqrtPeriod);
+        const startIndex = period - 1 + sqrtPeriod - 1;
+        return smooth.map((value, i) => ({
+            time: candles[startIndex + i]?.time,
+            value
+        })).filter(item => item.time != null);
+    }
+
+    // ─────────────────────────────────────────────
     // EMA on raw value array (used internally for MACD)
     // ─────────────────────────────────────────────
     function emaValues(values, period) {
@@ -94,6 +142,39 @@ var Indicators = (() => {
             });
         }
         return result;
+    }
+
+    // ─────────────────────────────────────────────
+    // Ichimoku Cloud
+    // ─────────────────────────────────────────────
+    function midpointRange(candles, endIndex, period) {
+        let high = -Infinity;
+        let low = Infinity;
+        for (let i = endIndex - period + 1; i <= endIndex; i++) {
+            high = Math.max(high, candles[i].high);
+            low = Math.min(low, candles[i].low);
+        }
+        return (high + low) / 2;
+    }
+
+    function ichimoku(candles, tenkan = 9, kijun = 26, spanB = 52) {
+        const conversion = [], base = [], spanA = [], spanBLine = [];
+        const minPeriod = Math.max(tenkan, kijun);
+        for (let i = tenkan - 1; i < candles.length; i++) {
+            conversion.push({ time: candles[i].time, value: midpointRange(candles, i, tenkan) });
+        }
+        for (let i = kijun - 1; i < candles.length; i++) {
+            base.push({ time: candles[i].time, value: midpointRange(candles, i, kijun) });
+        }
+        for (let i = minPeriod - 1; i < candles.length; i++) {
+            const conv = midpointRange(candles, i, tenkan);
+            const kij = midpointRange(candles, i, kijun);
+            spanA.push({ time: candles[i].time, value: (conv + kij) / 2 });
+        }
+        for (let i = spanB - 1; i < candles.length; i++) {
+            spanBLine.push({ time: candles[i].time, value: midpointRange(candles, i, spanB) });
+        }
+        return { conversion, base, spanA, spanB: spanBLine };
     }
 
     // ─────────────────────────────────────────────
@@ -164,6 +245,104 @@ var Indicators = (() => {
     }
 
     // ─────────────────────────────────────────────
+    // Common panel indicators
+    // ─────────────────────────────────────────────
+    function momentum(candles, period = 10) {
+        if (candles.length <= period) return [];
+        const result = [];
+        for (let i = period; i < candles.length; i++) {
+            result.push({ time: candles[i].time, value: candles[i].close - candles[i - period].close });
+        }
+        return result;
+    }
+
+    function roc(candles, period = 9) {
+        if (candles.length <= period) return [];
+        const result = [];
+        for (let i = period; i < candles.length; i++) {
+            const prev = candles[i - period].close;
+            result.push({ time: candles[i].time, value: prev !== 0 ? ((candles[i].close - prev) / prev) * 100 : 0 });
+        }
+        return result;
+    }
+
+    function cci(candles, period = 20) {
+        if (candles.length < period) return [];
+        const tps = candles.map(c => (c.high + c.low + c.close) / 3);
+        const result = [];
+        for (let i = period - 1; i < candles.length; i++) {
+            const slice = tps.slice(i - period + 1, i + 1);
+            const mean = slice.reduce((s, v) => s + v, 0) / period;
+            const meanDev = slice.reduce((s, v) => s + Math.abs(v - mean), 0) / period;
+            result.push({ time: candles[i].time, value: meanDev ? (tps[i] - mean) / (0.015 * meanDev) : 0 });
+        }
+        return result;
+    }
+
+    function stochastic(candles, kPeriod = 14, dPeriod = 3, smooth = 3) {
+        if (candles.length < kPeriod + smooth + dPeriod) return { kLine: [], dLine: [] };
+        const rawK = [];
+        for (let i = kPeriod - 1; i < candles.length; i++) {
+            const slice = candles.slice(i - kPeriod + 1, i + 1);
+            const high = Math.max(...slice.map(c => c.high));
+            const low = Math.min(...slice.map(c => c.low));
+            rawK.push({ time: candles[i].time, value: high !== low ? ((candles[i].close - low) / (high - low)) * 100 : 50 });
+        }
+        const kValues = sma(rawK.map(item => ({ time: item.time, close: item.value })), smooth);
+        const dValues = sma(kValues.map(item => ({ time: item.time, close: item.value })), dPeriod);
+        return { kLine: kValues, dLine: dValues };
+    }
+
+    function obv(candles) {
+        if (!candles || candles.length === 0) return [];
+        const result = [{ time: candles[0].time, value: candles[0].volume || 0 }];
+        let current = candles[0].volume || 0;
+        for (let i = 1; i < candles.length; i++) {
+            if (candles[i].close > candles[i - 1].close) current += candles[i].volume || 0;
+            else if (candles[i].close < candles[i - 1].close) current -= candles[i].volume || 0;
+            result.push({ time: candles[i].time, value: current });
+        }
+        return result;
+    }
+
+    function adx(candles, period = 14) {
+        if (candles.length < period * 2) return { adxLine: [], plusDI: [], minusDI: [] };
+        const tr = [], plusDM = [], minusDM = [];
+        for (let i = 1; i < candles.length; i++) {
+            const upMove = candles[i].high - candles[i - 1].high;
+            const downMove = candles[i - 1].low - candles[i].low;
+            plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+            minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+            tr.push(Math.max(
+                candles[i].high - candles[i].low,
+                Math.abs(candles[i].high - candles[i - 1].close),
+                Math.abs(candles[i].low - candles[i - 1].close)
+            ));
+        }
+
+        let trSm = tr.slice(0, period).reduce((s, v) => s + v, 0);
+        let plusSm = plusDM.slice(0, period).reduce((s, v) => s + v, 0);
+        let minusSm = minusDM.slice(0, period).reduce((s, v) => s + v, 0);
+        const dx = [], plusDI = [], minusDI = [];
+
+        for (let i = period; i < tr.length; i++) {
+            trSm = trSm - trSm / period + tr[i];
+            plusSm = plusSm - plusSm / period + plusDM[i];
+            minusSm = minusSm - minusSm / period + minusDM[i];
+            const plus = trSm ? 100 * (plusSm / trSm) : 0;
+            const minus = trSm ? 100 * (minusSm / trSm) : 0;
+            const value = (plus + minus) ? 100 * Math.abs(plus - minus) / (plus + minus) : 0;
+            const t = candles[i + 1].time;
+            plusDI.push({ time: t, value: plus });
+            minusDI.push({ time: t, value: minus });
+            dx.push({ time: t, value });
+        }
+
+        const adxLine = sma(dx.map(item => ({ time: item.time, close: item.value })), period);
+        return { adxLine, plusDI, minusDI };
+    }
+
+    // ─────────────────────────────────────────────
     // ATR — Average True Range (Helper)
     // ─────────────────────────────────────────────
     function atr(candles, period = 200) {
@@ -194,6 +373,38 @@ var Indicators = (() => {
             }
         }
         return result;
+    }
+
+    // ─────────────────────────────────────────────
+    // Supertrend
+    // ─────────────────────────────────────────────
+    function supertrend(candles, period = 10, multiplier = 3) {
+        const atrVals = atr(candles, period);
+        if (!atrVals || atrVals.length === 0) return { line: [], direction: [] };
+        const atrMap = new Map(atrVals.map(item => [item.time, item.value]));
+        const line = [], direction = [];
+        let finalUpper = null, finalLower = null, trend = 1;
+
+        for (let i = 1; i < candles.length; i++) {
+            const c = candles[i];
+            const prev = candles[i - 1];
+            const atrValue = atrMap.get(c.time);
+            if (atrValue == null) continue;
+            const hl2 = (c.high + c.low) / 2;
+            const basicUpper = hl2 + multiplier * atrValue;
+            const basicLower = hl2 - multiplier * atrValue;
+
+            finalUpper = finalUpper == null || basicUpper < finalUpper || prev.close > finalUpper ? basicUpper : finalUpper;
+            finalLower = finalLower == null || basicLower > finalLower || prev.close < finalLower ? basicLower : finalLower;
+
+            if (trend === -1 && c.close > finalUpper) trend = 1;
+            else if (trend === 1 && c.close < finalLower) trend = -1;
+
+            const value = trend === 1 ? finalLower : finalUpper;
+            line.push({ time: c.time, value, color: trend === 1 ? '#089981' : '#F23645' });
+            direction.push({ time: c.time, value: trend });
+        }
+        return { line, direction };
     }
 
     // ─────────────────────────────────────────────
@@ -792,5 +1003,9 @@ var Indicators = (() => {
         };
     }
 
-    return { sma, ema, bollingerBands, vwap, rsi, macd, volume, atr, smc };
+    return {
+        sma, ema, wma, hma, bollingerBands, vwap, ichimoku,
+        rsi, macd, momentum, roc, cci, stochastic, obv, adx,
+        volume, atr, supertrend, smc
+    };
 })();

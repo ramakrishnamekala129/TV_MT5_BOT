@@ -41,6 +41,8 @@ function startApp() {
     let cMenuTargetPane = null;
     let cMenuPrice = 0;
     let activeSMCSettingsPaneId = null;
+    let activeIndicatorLibraryPaneId = null;
+    let selectedIndicatorKey = null;
 
 
     // DOM refs
@@ -61,6 +63,11 @@ function startApp() {
         8: { source: 'yfinance',    symbol: '^NSEI',        timeframe: '1d'  }
     };
 
+    const HISTORY_BACKFILL_LIMIT = 300;
+    const HISTORY_BACKFILL_EDGE_BARS = 80;
+    const OSCILLATOR_PANEL_DEFAULT_HEIGHT = 120;
+    const OSCILLATOR_PANEL_MIN_HEIGHT = 70;
+
     // Indicator colour palette
     const IND_COLORS = {
         sma20:  '#F5A623',  // amber
@@ -75,6 +82,30 @@ function startApp() {
         macdLine:'#4ECDC4', // teal
         macdSig: '#FF6B6B', // coral
         volume:  'auto'
+    };
+
+    const INDICATOR_DEFS = {
+        sma20: { name: 'Simple Moving Average', short: 'SMA 20', category: 'Moving Averages', kind: 'overlay', defaults: { period: 20, color: IND_COLORS.sma20, width: 2 }, fields: [['period', 'Length', 'number', 1, 500], ['color', 'Color', 'color'], ['width', 'Line width', 'number', 1, 5]] },
+        sma50: { name: 'Simple Moving Average 50', short: 'SMA 50', category: 'Moving Averages', kind: 'overlay', defaults: { period: 50, color: IND_COLORS.sma50, width: 2 }, fields: [['period', 'Length', 'number', 1, 500], ['color', 'Color', 'color'], ['width', 'Line width', 'number', 1, 5]] },
+        ema9: { name: 'Exponential Moving Average', short: 'EMA 9', category: 'Moving Averages', kind: 'overlay', defaults: { period: 9, color: IND_COLORS.ema9, width: 2 }, fields: [['period', 'Length', 'number', 1, 500], ['color', 'Color', 'color'], ['width', 'Line width', 'number', 1, 5]] },
+        ema21: { name: 'Exponential Moving Average 21', short: 'EMA 21', category: 'Moving Averages', kind: 'overlay', defaults: { period: 21, color: IND_COLORS.ema21, width: 2 }, fields: [['period', 'Length', 'number', 1, 500], ['color', 'Color', 'color'], ['width', 'Line width', 'number', 1, 5]] },
+        wma20: { name: 'Weighted Moving Average', short: 'WMA', category: 'Moving Averages', kind: 'overlay', defaults: { period: 20, color: '#fbc02d', width: 2 }, fields: [['period', 'Length', 'number', 1, 500], ['color', 'Color', 'color'], ['width', 'Line width', 'number', 1, 5]] },
+        hma20: { name: 'Hull Moving Average', short: 'HMA', category: 'Moving Averages', kind: 'overlay', defaults: { period: 20, color: '#ff9800', width: 2 }, fields: [['period', 'Length', 'number', 1, 500], ['color', 'Color', 'color'], ['width', 'Line width', 'number', 1, 5]] },
+        bb20: { name: 'Bollinger Bands', short: 'BB', category: 'Volatility', kind: 'overlay', defaults: { period: 20, stdDev: 2, color: IND_COLORS.bbUpper, middleColor: '#787b86' }, fields: [['period', 'Length', 'number', 1, 500], ['stdDev', 'StdDev', 'number', 0.1, 10, 0.1], ['color', 'Band color', 'color'], ['middleColor', 'Basis color', 'color']] },
+        vwap: { name: 'VWAP', short: 'VWAP', category: 'Volume', kind: 'overlay', defaults: { color: IND_COLORS.vwap, width: 2 }, fields: [['color', 'Color', 'color'], ['width', 'Line width', 'number', 1, 5]] },
+        ichimoku: { name: 'Ichimoku Cloud', short: 'Ichimoku', category: 'Trend', kind: 'overlay', defaults: { tenkan: 9, kijun: 26, spanB: 52, conversionColor: '#2962ff', baseColor: '#b71c1c', cloudColor: '#787b86' }, fields: [['tenkan', 'Conversion', 'number', 1, 100], ['kijun', 'Base', 'number', 1, 200], ['spanB', 'Span B', 'number', 1, 300], ['conversionColor', 'Conversion color', 'color'], ['baseColor', 'Base color', 'color'], ['cloudColor', 'Cloud color', 'color']] },
+        supertrend: { name: 'Supertrend', short: 'Supertrend', category: 'Trend', kind: 'overlay', defaults: { period: 10, multiplier: 3, width: 2 }, fields: [['period', 'ATR length', 'number', 1, 100], ['multiplier', 'Factor', 'number', 0.1, 20, 0.1], ['width', 'Line width', 'number', 1, 5]] },
+        rsi14: { name: 'Relative Strength Index', short: 'RSI', category: 'Oscillators', kind: 'panel', defaults: { period: 14, color: IND_COLORS.rsi, overbought: 70, oversold: 30 }, fields: [['period', 'Length', 'number', 1, 100], ['overbought', 'Upper band', 'number', 1, 100], ['oversold', 'Lower band', 'number', 0, 99], ['color', 'Color', 'color']] },
+        macd: { name: 'MACD', short: 'MACD', category: 'Oscillators', kind: 'panel', defaults: { fast: 12, slow: 26, signal: 9, macdColor: IND_COLORS.macdLine, signalColor: IND_COLORS.macdSig }, fields: [['fast', 'Fast length', 'number', 1, 100], ['slow', 'Slow length', 'number', 1, 200], ['signal', 'Signal smoothing', 'number', 1, 100], ['macdColor', 'MACD color', 'color'], ['signalColor', 'Signal color', 'color']] },
+        stoch: { name: 'Stochastic', short: 'Stoch', category: 'Oscillators', kind: 'panel', defaults: { k: 14, d: 3, smooth: 3, kColor: '#2962ff', dColor: '#ff6d00' }, fields: [['k', '%K length', 'number', 1, 100], ['d', '%D smoothing', 'number', 1, 50], ['smooth', 'Smooth', 'number', 1, 50], ['kColor', '%K color', 'color'], ['dColor', '%D color', 'color']] },
+        cci: { name: 'Commodity Channel Index', short: 'CCI', category: 'Oscillators', kind: 'panel', defaults: { period: 20, color: '#26a69a' }, fields: [['period', 'Length', 'number', 1, 200], ['color', 'Color', 'color']] },
+        momentum: { name: 'Momentum', short: 'MOM', category: 'Oscillators', kind: 'panel', defaults: { period: 10, color: '#ab47bc' }, fields: [['period', 'Length', 'number', 1, 200], ['color', 'Color', 'color']] },
+        roc: { name: 'Rate of Change', short: 'ROC', category: 'Oscillators', kind: 'panel', defaults: { period: 9, color: '#29b6f6' }, fields: [['period', 'Length', 'number', 1, 200], ['color', 'Color', 'color']] },
+        atr: { name: 'Average True Range', short: 'ATR', category: 'Volatility', kind: 'panel', defaults: { period: 14, color: '#ffb74d' }, fields: [['period', 'Length', 'number', 1, 200], ['color', 'Color', 'color']] },
+        adx: { name: 'Average Directional Index', short: 'ADX', category: 'Trend', kind: 'panel', defaults: { period: 14, adxColor: '#fbc02d', plusColor: '#089981', minusColor: '#f23645' }, fields: [['period', 'Length', 'number', 1, 100], ['adxColor', 'ADX color', 'color'], ['plusColor', '+DI color', 'color'], ['minusColor', '-DI color', 'color']] },
+        obv: { name: 'On Balance Volume', short: 'OBV', category: 'Volume', kind: 'panel', defaults: { color: '#7e57c2' }, fields: [['color', 'Color', 'color']] },
+        volume: { name: 'Volume', short: 'VOL', category: 'Volume', kind: 'panel', defaults: {}, fields: [] },
+        smc: { name: 'Smart Money Concepts', short: 'SMC', category: 'Smart Money', kind: 'overlay', defaults: {}, fields: [] }
     };
 
     // ──────────────────────────────────────────────
@@ -97,6 +128,7 @@ function startApp() {
         testMT5Connection();
         window.addEventListener('resize', handleResize);
         initSMCSettingsEvents();
+        initIndicatorLibraryEvents();
     }
 
     // ──────────────────────────────────────────────
@@ -175,6 +207,24 @@ function startApp() {
             try { activeIndicators = JSON.parse(rawIndicators); } catch(e) {}
         }
 
+        const rawIndicatorSettings = SafeStorage.getItem(`ag_pane_indicator_settings_${paneId}`);
+        let indicatorSettings = {};
+        if (rawIndicatorSettings) {
+            try { indicatorSettings = JSON.parse(rawIndicatorSettings); } catch(e) {}
+        }
+
+        const rawIndicatorVisibility = SafeStorage.getItem(`ag_pane_indicator_visibility_${paneId}`);
+        let indicatorVisibility = {};
+        if (rawIndicatorVisibility) {
+            try { indicatorVisibility = JSON.parse(rawIndicatorVisibility); } catch(e) {}
+        }
+
+        const rawOscillatorSizes = SafeStorage.getItem(`ag_pane_oscillator_sizes_${paneId}`);
+        let oscillatorSizes = {};
+        if (rawOscillatorSizes) {
+            try { oscillatorSizes = JSON.parse(rawOscillatorSizes); } catch(e) {}
+        }
+
         // ── Main Chart ──
         const chart = LightweightCharts.createChart(chartMount, {
             layout: {
@@ -244,13 +294,20 @@ function startApp() {
             lastPrice: null,
             lastCandle: null,
             candles: [],
+            isBackfilling: false,
+            hasMoreHistory: true,
             activeIndicators,
+            indicatorSettings,
+            indicatorVisibility,
+            oscillatorSizes,
             overlaySeries: {},
             smcSeries: [],
             smcSettings: smcSettings,
             activeTool: null,
             drawings: []
         };
+
+        wireHistoryBackfill(STATE.panes[paneId]);
 
         // ── Wire event listeners ──
         if (sourceSelect) sourceSelect.addEventListener('change', () => handlePaneConfigChange(paneId));
@@ -294,6 +351,14 @@ function startApp() {
                 toggleIndicator(paneId, ind, btn);
             });
         });
+
+        const indicatorLibraryBtn = paneEl.querySelector('.indicator-library-btn');
+        if (indicatorLibraryBtn) {
+            indicatorLibraryBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                openIndicatorLibrary(paneId);
+            });
+        }
 
         // Settings gear wiring
         paneEl.querySelectorAll('.ind-settings-icon').forEach(btn => {
@@ -366,6 +431,8 @@ function startApp() {
 
         cleanupFeeds(pane);
         pane.lastPrice = null; pane.lastCandle = null; pane.candles = [];
+        pane.isBackfilling = false;
+        pane.hasMoreHistory = true;
 
         // Clear all overlay series
         Object.values(pane.overlaySeries).forEach(s => {
@@ -390,7 +457,7 @@ function startApp() {
                 '<div class="spinner"></div><span class="loading-text">Fetching historical data...</span>';
         }
 
-        const url = `/api/historical?source=${pane.source}&symbol=${pane.symbol}&timeframe=${pane.timeframe}&limit=500`;
+        const url = buildHistoricalUrl(pane, 500);
         fetch(url)
             .then(r => r.json())
             .then(data => {
@@ -398,9 +465,7 @@ function startApp() {
                     throw new Error(data.error || 'No data returned');
 
                 pane.candles = data;
-                // Cache timeToIndexMap for fast O(1) crosshair lookup
-                pane.timeToIndexMap = new Map();
-                data.forEach((c, idx) => pane.timeToIndexMap.set(c.time, idx));
+                rebuildTimeIndexMap(pane);
                 
                 pane.series.setData(data);
                 pane.chart.timeScale().fitContent();
@@ -431,6 +496,30 @@ function startApp() {
             });
     }
 
+    function buildHistoricalUrl(pane, limit, beforeTime = null) {
+        const params = new URLSearchParams({
+            source: pane.source,
+            symbol: pane.symbol,
+            timeframe: pane.timeframe,
+            limit: String(limit)
+        });
+        if (beforeTime != null) params.set('before', String(beforeTime));
+        return `/api/historical?${params.toString()}`;
+    }
+
+    function rebuildTimeIndexMap(pane) {
+        pane.timeToIndexMap = new Map();
+        pane.candles.forEach((c, idx) => pane.timeToIndexMap.set(c.time, idx));
+    }
+
+    function mergeCandles(existing, incoming) {
+        const byTime = new Map();
+        [...incoming, ...existing].forEach(candle => {
+            if (candle && candle.time != null) byTime.set(candle.time, candle);
+        });
+        return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+    }
+
     function applySymbolFormat(pane) {
         fetch(`/api/symbol_format?source=${pane.source}&symbol=${pane.symbol}`)
             .then(r => r.json())
@@ -457,47 +546,278 @@ function startApp() {
             // Remove
             removeIndicator(pane, indKey);
             pane.activeIndicators[indKey] = false;
+            if (pane.indicatorVisibility) delete pane.indicatorVisibility[indKey];
             btn.classList.remove('active');
+            const group = btn.closest('.ind-chip-group');
+            if (group) group.classList.remove('active');
         } else {
             // Add
             if (pane.candles.length === 0) {
                 console.warn(`Pane #${paneId}: No data loaded yet. Load chart first.`);
                 return;
             }
-            
+
+            pane.indicatorVisibility = pane.indicatorVisibility || {};
+            pane.indicatorVisibility[indKey] = true;
             renderIndicator(pane, indKey);
             pane.activeIndicators[indKey] = true;
             btn.classList.add('active');
+            const group = btn.closest('.ind-chip-group');
+            if (group) group.classList.add('active');
         }
 
-        SafeStorage.setItem(`ag_pane_indicators_${paneId}`, JSON.stringify(pane.activeIndicators));
+        saveIndicatorState(pane);
+        updateActiveIndicatorLegend(pane);
+        renderIndicatorLibrary();
+    }
+
+    function getIndicatorConfig(pane, indKey) {
+        const def = INDICATOR_DEFS[indKey] || { defaults: {} };
+        return { ...(def.defaults || {}), ...((pane.indicatorSettings || {})[indKey] || {}) };
+    }
+
+    function setIndicatorConfig(pane, indKey, cfg) {
+        pane.indicatorSettings = pane.indicatorSettings || {};
+        pane.indicatorSettings[indKey] = { ...(INDICATOR_DEFS[indKey]?.defaults || {}), ...cfg };
+        SafeStorage.setItem(`ag_pane_indicator_settings_${pane.id}`, JSON.stringify(pane.indicatorSettings));
+    }
+
+    function saveIndicatorState(pane) {
+        SafeStorage.setItem(`ag_pane_indicators_${pane.id}`, JSON.stringify(pane.activeIndicators));
+        SafeStorage.setItem(`ag_pane_indicator_settings_${pane.id}`, JSON.stringify(pane.indicatorSettings || {}));
+        SafeStorage.setItem(`ag_pane_indicator_visibility_${pane.id}`, JSON.stringify(pane.indicatorVisibility || {}));
+    }
+
+    function isIndicatorVisible(pane, indKey) {
+        return (pane.indicatorVisibility || {})[indKey] !== false;
+    }
+
+    function setIndicatorVisibility(pane, indKey, visible) {
+        pane.indicatorVisibility = pane.indicatorVisibility || {};
+        pane.indicatorVisibility[indKey] = visible;
+        saveIndicatorState(pane);
+    }
+
+    function toggleIndicatorVisibility(pane, indKey) {
+        if (!pane || !pane.activeIndicators?.[indKey]) return;
+
+        const nextVisible = !isIndicatorVisible(pane, indKey);
+        setIndicatorVisibility(pane, indKey, nextVisible);
+
+        if (nextVisible) {
+            renderIndicator(pane, indKey);
+        } else {
+            removeIndicator(pane, indKey);
+        }
+
+        updateActiveIndicatorLegend(pane);
+        renderIndicatorLibrary();
+    }
+
+    function setIndicatorActive(pane, indKey, active) {
+        if (!pane || !indKey) return;
+        if (active) {
+            if (pane.candles.length === 0) return;
+            pane.activeIndicators[indKey] = true;
+            pane.indicatorVisibility = pane.indicatorVisibility || {};
+            pane.indicatorVisibility[indKey] = true;
+            renderIndicator(pane, indKey);
+        } else {
+            removeIndicator(pane, indKey);
+            pane.activeIndicators[indKey] = false;
+            if (pane.indicatorVisibility) delete pane.indicatorVisibility[indKey];
+        }
+        saveIndicatorState(pane);
+        updateToolbarIndicatorState(pane, indKey);
+        updateActiveIndicatorLegend(pane);
+    }
+
+    function updateToolbarIndicatorState(pane, indKey) {
+        const btn = pane.element.querySelector(`.ind-chip[data-indicator="${indKey}"]`);
+        if (!btn) return;
+        const active = !!pane.activeIndicators[indKey];
+        btn.classList.toggle('active', active);
+        const group = btn.closest('.ind-chip-group');
+        if (group) group.classList.toggle('active', active);
+    }
+
+    function getIndicatorLegendLabel(pane, indKey) {
+        const def = INDICATOR_DEFS[indKey];
+        const cfg = getIndicatorConfig(pane, indKey);
+        if (!def) return indKey;
+
+        switch (indKey) {
+            case 'sma20':
+            case 'sma50':
+                return `SMA ${cfg.period}`;
+            case 'ema9':
+            case 'ema21':
+                return `EMA ${cfg.period}`;
+            case 'wma20':
+                return `WMA ${cfg.period}`;
+            case 'hma20':
+                return `HMA ${cfg.period}`;
+            case 'bb20':
+                return `BB ${cfg.period} ${cfg.stdDev}`;
+            case 'ichimoku':
+                return `Ichimoku ${cfg.tenkan} ${cfg.kijun} ${cfg.spanB}`;
+            case 'supertrend':
+                return `Supertrend ${cfg.period} ${cfg.multiplier}`;
+            case 'rsi14':
+                return `RSI ${cfg.period}`;
+            case 'macd':
+                return `MACD ${cfg.fast} ${cfg.slow} ${cfg.signal}`;
+            case 'stoch':
+                return `Stoch ${cfg.k} ${cfg.d} ${cfg.smooth}`;
+            case 'cci':
+                return `CCI ${cfg.period}`;
+            case 'momentum':
+                return `Mom ${cfg.period}`;
+            case 'roc':
+                return `ROC ${cfg.period}`;
+            case 'atr':
+                return `ATR ${cfg.period}`;
+            case 'adx':
+                return `ADX ${cfg.period}`;
+            default:
+                return def.short || def.name;
+        }
+    }
+
+    function openIndicatorSettings(paneId, indKey) {
+        if (indKey === 'smc') {
+            openSMCSettings(paneId);
+            return;
+        }
+
+        const pane = STATE.panes[paneId];
+        if (!pane) return;
+        activeIndicatorLibraryPaneId = paneId;
+        selectedIndicatorKey = indKey;
+
+        const paneLabel = document.getElementById('indicator-library-pane-label');
+        if (paneLabel) paneLabel.textContent = `Pane #${paneId} · ${pane.symbol} · ${pane.timeframe}`;
+        const search = document.getElementById('indicator-library-search');
+        if (search) search.value = '';
+        const modal = document.getElementById('indicator-library-dialog');
+        if (modal) modal.classList.remove('hidden');
+        renderIndicatorLibrary();
+    }
+
+    function makeIndicatorLegendItem(pane, indKey) {
+        const item = document.createElement('div');
+        item.className = 'indicator-legend-item';
+        item.dataset.indicatorKey = indKey;
+        item.classList.toggle('is-hidden', !isIndicatorVisible(pane, indKey));
+
+        const name = document.createElement('span');
+        name.className = 'indicator-legend-name';
+        name.textContent = getIndicatorLegendLabel(pane, indKey);
+        item.appendChild(name);
+
+        const actions = document.createElement('span');
+        actions.className = 'indicator-legend-actions';
+
+        const hideBtn = document.createElement('button');
+        hideBtn.type = 'button';
+        hideBtn.className = 'indicator-action-btn indicator-hide-btn';
+        hideBtn.title = isIndicatorVisible(pane, indKey) ? 'Hide indicator' : 'Show indicator';
+        hideBtn.setAttribute('aria-label', `${hideBtn.title}: ${name.textContent}`);
+        hideBtn.textContent = isIndicatorVisible(pane, indKey) ? '◉' : '○';
+        hideBtn.addEventListener('click', event => {
+            event.stopPropagation();
+            toggleIndicatorVisibility(pane, indKey);
+        });
+
+        const settingsBtn = document.createElement('button');
+        settingsBtn.type = 'button';
+        settingsBtn.className = 'indicator-action-btn';
+        settingsBtn.title = 'Indicator settings';
+        settingsBtn.setAttribute('aria-label', `${name.textContent} settings`);
+        settingsBtn.textContent = '⚙';
+        settingsBtn.addEventListener('click', event => {
+            event.stopPropagation();
+            openIndicatorSettings(pane.id, indKey);
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'indicator-action-btn';
+        removeBtn.title = 'Remove indicator';
+        removeBtn.setAttribute('aria-label', `Remove ${name.textContent}`);
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', event => {
+            event.stopPropagation();
+            setIndicatorActive(pane, indKey, false);
+            renderIndicatorLibrary();
+        });
+
+        actions.appendChild(hideBtn);
+        actions.appendChild(settingsBtn);
+        actions.appendChild(removeBtn);
+        item.appendChild(actions);
+        return item;
+    }
+
+    function updateActiveIndicatorLegend(pane) {
+        if (!pane?.element) return;
+        const legend = pane.element.querySelector('.indicator-legend');
+        if (!legend) return;
+
+        legend.innerHTML = '';
+        Object.entries(pane.activeIndicators || {}).forEach(([indKey, active]) => {
+            const def = INDICATOR_DEFS[indKey];
+            if (!active || !def) return;
+            if (def.kind !== 'overlay' && isIndicatorVisible(pane, indKey)) return;
+            legend.appendChild(makeIndicatorLegendItem(pane, indKey));
+        });
     }
 
     function renderIndicator(pane, indKey) {
         if (!pane.candles || pane.candles.length === 0) return;
 
+        if (!isIndicatorVisible(pane, indKey)) {
+            removeIndicator(pane, indKey);
+            updateActiveIndicatorLegend(pane);
+            return;
+        }
+
         const c = pane.candles;
+        const cfg = getIndicatorConfig(pane, indKey);
 
         switch(indKey) {
-            case 'sma20': renderLineSeries(pane, 'sma20', Indicators.sma(c, 20),  IND_COLORS.sma20,   1.5); break;
-            case 'sma50': renderLineSeries(pane, 'sma50', Indicators.sma(c, 50),  IND_COLORS.sma50,   1.5); break;
-            case 'ema9':  renderLineSeries(pane, 'ema9',  Indicators.ema(c,  9),  IND_COLORS.ema9,    1.5); break;
-            case 'ema21': renderLineSeries(pane, 'ema21', Indicators.ema(c, 21),  IND_COLORS.ema21,   1.5); break;
-            case 'vwap':  renderLineSeries(pane, 'vwap',  Indicators.vwap(c),     IND_COLORS.vwap,    1.5); break;
+            case 'sma20': renderLineSeries(pane, 'sma20', Indicators.sma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'sma50': renderLineSeries(pane, 'sma50', Indicators.sma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'ema9':  renderLineSeries(pane, 'ema9',  Indicators.ema(c, cfg.period), cfg.color, cfg.width); break;
+            case 'ema21': renderLineSeries(pane, 'ema21', Indicators.ema(c, cfg.period), cfg.color, cfg.width); break;
+            case 'wma20': renderLineSeries(pane, 'wma20', Indicators.wma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'hma20': renderLineSeries(pane, 'hma20', Indicators.hma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'vwap':  renderLineSeries(pane, 'vwap',  Indicators.vwap(c), cfg.color, cfg.width); break;
 
             case 'bb20': {
-                const bb = Indicators.bollingerBands(c, 20, 2);
-                renderLineSeries(pane, 'bbUpper',  bb.upper,  IND_COLORS.bbUpper,  1,  { lineStyle: 1 });
-                renderLineSeries(pane, 'bbMiddle', bb.middle, IND_COLORS.bbMiddle, 1,  { lineStyle: 2 });
-                renderLineSeries(pane, 'bbLower',  bb.lower,  IND_COLORS.bbLower,  1,  { lineStyle: 1 });
+                const bb = Indicators.bollingerBands(c, cfg.period, cfg.stdDev);
+                renderLineSeries(pane, 'bbUpper',  bb.upper,  cfg.color,  1,  { lineStyle: 1 });
+                renderLineSeries(pane, 'bbMiddle', bb.middle, cfg.middleColor, 1,  { lineStyle: 2 });
+                renderLineSeries(pane, 'bbLower',  bb.lower,  cfg.color,  1,  { lineStyle: 1 });
                 break;
             }
 
-            case 'rsi14': renderOscillatorRSI(pane); break;
-            case 'macd':  renderOscillatorMACD(pane); break;
+            case 'ichimoku': renderIchimoku(pane, cfg); break;
+            case 'supertrend': renderSupertrend(pane, cfg); break;
+            case 'rsi14': renderOscillatorRSI(pane, cfg); break;
+            case 'macd':  renderOscillatorMACD(pane, cfg); break;
+            case 'stoch': renderOscillatorStochastic(pane, cfg); break;
+            case 'cci': renderOscillatorLine(pane, indKey, `CCI (${cfg.period})`, Indicators.cci(c, cfg.period), cfg.color, 2, [{ value: 100, color: 'rgba(255,23,68,0.35)' }, { value: -100, color: 'rgba(0,230,118,0.35)' }]); break;
+            case 'momentum': renderOscillatorLine(pane, indKey, `Momentum (${cfg.period})`, Indicators.momentum(c, cfg.period), cfg.color, 4, [{ value: 0, color: 'rgba(120,123,134,0.35)' }]); break;
+            case 'roc': renderOscillatorLine(pane, indKey, `ROC (${cfg.period})`, Indicators.roc(c, cfg.period), cfg.color, 2, [{ value: 0, color: 'rgba(120,123,134,0.35)' }]); break;
+            case 'atr': renderOscillatorLine(pane, indKey, `ATR (${cfg.period})`, Indicators.atr(c, cfg.period), cfg.color, 5); break;
+            case 'obv': renderOscillatorLine(pane, indKey, 'OBV', Indicators.obv(c), cfg.color, 0); break;
+            case 'adx': renderOscillatorADX(pane, cfg); break;
             case 'volume': renderOscillatorVolume(pane); break;
             case 'smc': renderSMC(pane); break;
         }
+
+        updateActiveIndicatorLegend(pane);
     }
 
     function removeIndicator(pane, indKey) {
@@ -512,8 +832,12 @@ function startApp() {
             sma50:  ['sma50'],
             ema9:   ['ema9'],
             ema21:  ['ema21'],
+            wma20:  ['wma20'],
+            hma20:  ['hma20'],
             vwap:   ['vwap'],
-            bb20:   ['bbUpper', 'bbMiddle', 'bbLower']
+            bb20:   ['bbUpper', 'bbMiddle', 'bbLower'],
+            ichimoku: ['ichiConversion', 'ichiBase', 'ichiSpanA', 'ichiSpanB'],
+            supertrend: ['supertrend']
         };
 
         if (overlayKeys[indKey]) {
@@ -526,7 +850,7 @@ function startApp() {
         }
 
         // Oscillator removal
-        if (['rsi14', 'macd', 'volume'].includes(indKey)) {
+        if (['rsi14', 'macd', 'volume', 'stoch', 'cci', 'momentum', 'roc', 'atr', 'obv', 'adx'].includes(indKey)) {
             clearOscillator(pane, indKey);
         }
     }
@@ -552,6 +876,7 @@ function startApp() {
         if (!data || data.length === 0) return;
 
         if (pane.overlaySeries[key]) {
+            pane.overlaySeries[key].applyOptions({ color, lineWidth, ...extraOpts });
             pane.overlaySeries[key].setData(data);
             return;
         }
@@ -568,14 +893,74 @@ function startApp() {
         pane.overlaySeries[key] = s;
     }
 
+    function renderIchimoku(pane, cfg) {
+        const data = Indicators.ichimoku(pane.candles, cfg.tenkan, cfg.kijun, cfg.spanB);
+        renderLineSeries(pane, 'ichiConversion', data.conversion, cfg.conversionColor, 1.5);
+        renderLineSeries(pane, 'ichiBase', data.base, cfg.baseColor, 1.5);
+        renderLineSeries(pane, 'ichiSpanA', data.spanA, cfg.cloudColor, 1, { lineStyle: 2 });
+        renderLineSeries(pane, 'ichiSpanB', data.spanB, cfg.cloudColor, 1, { lineStyle: 2 });
+    }
+
+    function renderSupertrend(pane, cfg) {
+        const data = Indicators.supertrend(pane.candles, cfg.period, cfg.multiplier);
+        renderLineSeries(pane, 'supertrend', data.line, '#089981', cfg.width, {
+            priceLineVisible: false,
+            lastValueVisible: true
+        });
+    }
+
+    function setGuideLine(seriesMap, chart, key, firstTime, lastTime, guide) {
+        if (!seriesMap[key]) {
+            seriesMap[key] = chart.addSeries(LightweightCharts.LineSeries, {
+                color: guide.color,
+                lineWidth: 1,
+                lineStyle: 2,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+        } else {
+            seriesMap[key].applyOptions({ color: guide.color });
+        }
+        seriesMap[key].setData([{ time: firstTime, value: guide.value }, { time: lastTime, value: guide.value }]);
+    }
+
+    function renderOscillatorLine(pane, indKey, label, data, color, precision = 2, guides = []) {
+        if (!data || data.length === 0) return;
+        const alignedData = alignDataToCandles(data, pane.candles);
+        const osc = ensureOscChart(pane, indKey, label);
+        if (!osc) return;
+        osc.alignedData = alignedData;
+
+        if (!osc.series.mainLine) {
+            osc.series.mainLine = osc.chart.addSeries(LightweightCharts.LineSeries, {
+                color,
+                lineWidth: 1.5,
+                priceLineVisible: false,
+                lastValueVisible: true,
+                crosshairMarkerVisible: false,
+                priceFormat: { type: 'price', precision, minMove: Math.pow(10, -precision) }
+            });
+        } else {
+            osc.series.mainLine.applyOptions({ color });
+        }
+        osc.series.mainLine.setData(alignedData);
+
+        const tFirst = pane.candles[0].time;
+        const tLast = pane.candles[pane.candles.length - 1].time;
+        guides.forEach((guide, idx) => setGuideLine(osc.series, osc.chart, `guide${idx}`, tFirst, tLast, guide));
+
+        syncTimeScales(pane);
+    }
+
     // ── RSI sub-pane ──
-    function renderOscillatorRSI(pane) {
+    function renderOscillatorRSI(pane, cfg = getIndicatorConfig(pane, 'rsi14')) {
         const indKey = 'rsi14';
-        const rsiData = Indicators.rsi(pane.candles, 14);
+        const rsiData = Indicators.rsi(pane.candles, cfg.period);
         if (!rsiData || rsiData.length === 0) return;
 
         const alignedRsiData = alignDataToCandles(rsiData, pane.candles);
-        const osc = ensureOscChart(pane, indKey, 'RSI (14)');
+        const osc = ensureOscChart(pane, indKey, `RSI (${cfg.period})`);
         if (!osc) return;
 
         // Store aligned data for crosshair O(1) lookups
@@ -583,7 +968,7 @@ function startApp() {
 
         if (!osc.series.rsiLine) {
             const rsiSeries = osc.chart.addSeries(LightweightCharts.LineSeries, {
-                color: IND_COLORS.rsi, lineWidth: 1.5,
+                color: cfg.color, lineWidth: 1.5,
                 priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false,
                 priceFormat: { type: 'price', precision: 1, minMove: 0.1 }
             });
@@ -598,29 +983,31 @@ function startApp() {
             osc.series.rsiLine = rsiSeries;
             osc.series.rsiOB   = obLine;
             osc.series.rsiOS   = osLine;
+        } else {
+            osc.series.rsiLine.applyOptions({ color: cfg.color });
         }
 
         osc.series.rsiLine.setData(alignedRsiData);
 
         const tFirst = pane.candles[0].time;
         const tLast = pane.candles[pane.candles.length - 1].time;
-        osc.series.rsiOB.setData([{ time: tFirst, value: 70 }, { time: tLast, value: 70 }]);
-        osc.series.rsiOS.setData([{ time: tFirst, value: 30 }, { time: tLast, value: 30 }]);
+        osc.series.rsiOB.setData([{ time: tFirst, value: cfg.overbought }, { time: tLast, value: cfg.overbought }]);
+        osc.series.rsiOS.setData([{ time: tFirst, value: cfg.oversold }, { time: tLast, value: cfg.oversold }]);
 
         syncTimeScales(pane);
     }
 
     // ── MACD sub-pane ──
-    function renderOscillatorMACD(pane) {
+    function renderOscillatorMACD(pane, cfg = getIndicatorConfig(pane, 'macd')) {
         const indKey = 'macd';
-        const macdData = Indicators.macd(pane.candles, 12, 26, 9);
+        const macdData = Indicators.macd(pane.candles, cfg.fast, cfg.slow, cfg.signal);
         if (!macdData) return;
 
         const alignedMacdLine = alignDataToCandles(macdData.macdLine, pane.candles);
         const alignedSignalLine = alignDataToCandles(macdData.signalLine, pane.candles);
         const alignedHistogram = alignDataToCandles(macdData.histogram, pane.candles);
 
-        const osc = ensureOscChart(pane, indKey, 'MACD (12,26,9)');
+        const osc = ensureOscChart(pane, indKey, `MACD (${cfg.fast},${cfg.slow},${cfg.signal})`);
         if (!osc) return;
 
         // Store aligned data for crosshair O(1) lookups
@@ -632,24 +1019,91 @@ function startApp() {
                 priceFormat: { type: 'price', precision: 5, minMove: 0.00001 }
             });
             const macdLine = osc.chart.addSeries(LightweightCharts.LineSeries, {
-                color: IND_COLORS.macdLine, lineWidth: 1.5,
+                color: cfg.macdColor, lineWidth: 1.5,
                 priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
                 priceFormat: { type: 'price', precision: 5, minMove: 0.00001 }
             });
             const sigLine = osc.chart.addSeries(LightweightCharts.LineSeries, {
-                color: IND_COLORS.macdSig, lineWidth: 1, lineStyle: 1,
+                color: cfg.signalColor, lineWidth: 1, lineStyle: 1,
                 priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
                 priceFormat: { type: 'price', precision: 5, minMove: 0.00001 }
             });
             osc.series.macdHist = histSeries;
             osc.series.macdLine = macdLine;
             osc.series.macdSig  = sigLine;
+        } else {
+            osc.series.macdLine.applyOptions({ color: cfg.macdColor });
+            osc.series.macdSig.applyOptions({ color: cfg.signalColor });
         }
 
         osc.series.macdHist.setData(alignedHistogram);
         osc.series.macdLine.setData(alignedMacdLine);
         osc.series.macdSig.setData(alignedSignalLine);
 
+        syncTimeScales(pane);
+    }
+
+    function renderOscillatorStochastic(pane, cfg) {
+        const indKey = 'stoch';
+        const data = Indicators.stochastic(pane.candles, cfg.k, cfg.d, cfg.smooth);
+        if (!data.kLine || data.kLine.length === 0) return;
+        const osc = ensureOscChart(pane, indKey, `Stoch (${cfg.k},${cfg.d},${cfg.smooth})`);
+        if (!osc) return;
+
+        const kLine = alignDataToCandles(data.kLine, pane.candles);
+        const dLine = alignDataToCandles(data.dLine, pane.candles);
+        osc.alignedData = kLine;
+
+        if (!osc.series.kLine) {
+            osc.series.kLine = osc.chart.addSeries(LightweightCharts.LineSeries, {
+                color: cfg.kColor, lineWidth: 1.5,
+                priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false,
+                priceFormat: { type: 'price', precision: 1, minMove: 0.1 }
+            });
+            osc.series.dLine = osc.chart.addSeries(LightweightCharts.LineSeries, {
+                color: cfg.dColor, lineWidth: 1,
+                priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false,
+                priceFormat: { type: 'price', precision: 1, minMove: 0.1 }
+            });
+        } else {
+            osc.series.kLine.applyOptions({ color: cfg.kColor });
+            osc.series.dLine.applyOptions({ color: cfg.dColor });
+        }
+        osc.series.kLine.setData(kLine);
+        osc.series.dLine.setData(dLine);
+
+        const tFirst = pane.candles[0].time;
+        const tLast = pane.candles[pane.candles.length - 1].time;
+        setGuideLine(osc.series, osc.chart, 'upperGuide', tFirst, tLast, { value: 80, color: 'rgba(255,23,68,0.35)' });
+        setGuideLine(osc.series, osc.chart, 'lowerGuide', tFirst, tLast, { value: 20, color: 'rgba(0,230,118,0.35)' });
+        syncTimeScales(pane);
+    }
+
+    function renderOscillatorADX(pane, cfg) {
+        const indKey = 'adx';
+        const data = Indicators.adx(pane.candles, cfg.period);
+        if (!data.adxLine || data.adxLine.length === 0) return;
+        const osc = ensureOscChart(pane, indKey, `ADX (${cfg.period})`);
+        if (!osc) return;
+
+        const adxLine = alignDataToCandles(data.adxLine, pane.candles);
+        const plusDI = alignDataToCandles(data.plusDI, pane.candles);
+        const minusDI = alignDataToCandles(data.minusDI, pane.candles);
+        osc.alignedData = adxLine;
+
+        if (!osc.series.adxLine) {
+            osc.series.adxLine = osc.chart.addSeries(LightweightCharts.LineSeries, { color: cfg.adxColor, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
+            osc.series.plusDI = osc.chart.addSeries(LightweightCharts.LineSeries, { color: cfg.plusColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
+            osc.series.minusDI = osc.chart.addSeries(LightweightCharts.LineSeries, { color: cfg.minusColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false });
+        } else {
+            osc.series.adxLine.applyOptions({ color: cfg.adxColor });
+            osc.series.plusDI.applyOptions({ color: cfg.plusColor });
+            osc.series.minusDI.applyOptions({ color: cfg.minusColor });
+        }
+
+        osc.series.adxLine.setData(adxLine);
+        osc.series.plusDI.setData(plusDI);
+        osc.series.minusDI.setData(minusDI);
         syncTimeScales(pane);
     }
 
@@ -687,11 +1141,64 @@ function startApp() {
         if (!pane.oscillators[indKey]) {
             const subpaneEl = document.createElement('div');
             subpaneEl.className = 'oscillator-subpane';
+            applyOscillatorPanelHeight(pane, indKey, subpaneEl, pane.oscillatorSizes?.[indKey] || OSCILLATOR_PANEL_DEFAULT_HEIGHT);
             container.appendChild(subpaneEl);
+
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'oscillator-resize-handle';
+            resizeHandle.title = 'Drag to resize panel';
+            subpaneEl.appendChild(resizeHandle);
 
             const lbl = document.createElement('div');
             lbl.className = 'oscillator-label';
-            lbl.textContent = label;
+            lbl.dataset.indicatorKey = indKey;
+            lbl.classList.toggle('is-hidden', !isIndicatorVisible(pane, indKey));
+            const labelName = document.createElement('span');
+            labelName.className = 'indicator-legend-name';
+            labelName.textContent = getIndicatorLegendLabel(pane, indKey);
+            lbl.appendChild(labelName);
+
+            const actions = document.createElement('span');
+            actions.className = 'indicator-legend-actions';
+
+            const hideBtn = document.createElement('button');
+            hideBtn.type = 'button';
+            hideBtn.className = 'indicator-action-btn indicator-hide-btn';
+            hideBtn.title = 'Hide indicator';
+            hideBtn.setAttribute('aria-label', `Hide ${labelName.textContent}`);
+            hideBtn.textContent = '◉';
+            hideBtn.addEventListener('click', event => {
+                event.stopPropagation();
+                toggleIndicatorVisibility(pane, indKey);
+            });
+
+            const settingsBtn = document.createElement('button');
+            settingsBtn.type = 'button';
+            settingsBtn.className = 'indicator-action-btn';
+            settingsBtn.title = 'Indicator settings';
+            settingsBtn.setAttribute('aria-label', `${labelName.textContent} settings`);
+            settingsBtn.textContent = '⚙';
+            settingsBtn.addEventListener('click', event => {
+                event.stopPropagation();
+                openIndicatorSettings(pane.id, indKey);
+            });
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'indicator-action-btn';
+            removeBtn.title = 'Remove indicator';
+            removeBtn.setAttribute('aria-label', `Remove ${labelName.textContent}`);
+            removeBtn.textContent = '×';
+            removeBtn.addEventListener('click', event => {
+                event.stopPropagation();
+                setIndicatorActive(pane, indKey, false);
+                renderIndicatorLibrary();
+            });
+
+            actions.appendChild(hideBtn);
+            actions.appendChild(settingsBtn);
+            actions.appendChild(removeBtn);
+            lbl.appendChild(actions);
             subpaneEl.appendChild(lbl);
 
             const oscMountEl = document.createElement('div');
@@ -730,15 +1237,74 @@ function startApp() {
                 chart,
                 series: {},
                 subpaneEl,
+                resizeHandle,
                 resizeObserver
             };
+
+            wireOscillatorPanelResize(pane, indKey, subpaneEl, resizeHandle);
             
             // Initial resize
             const rect = subpaneEl.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) chart.resize(rect.width, rect.height);
+        } else {
+            const lbl = pane.oscillators[indKey].subpaneEl?.querySelector('.oscillator-label');
+            const labelName = lbl?.querySelector('.indicator-legend-name');
+            if (labelName) labelName.textContent = getIndicatorLegendLabel(pane, indKey);
+            if (lbl) lbl.classList.toggle('is-hidden', !isIndicatorVisible(pane, indKey));
         }
         
         return pane.oscillators[indKey];
+    }
+
+    function applyOscillatorPanelHeight(pane, indKey, subpaneEl, height) {
+        const paneHeight = pane.element?.clientHeight || 360;
+        const maxHeight = Math.max(OSCILLATOR_PANEL_MIN_HEIGHT, Math.floor(paneHeight * 0.72));
+        const nextHeight = Math.max(OSCILLATOR_PANEL_MIN_HEIGHT, Math.min(Math.round(height), maxHeight));
+        subpaneEl.style.height = `${nextHeight}px`;
+        subpaneEl.style.flexBasis = `${nextHeight}px`;
+        if (pane.oscillatorSizes) pane.oscillatorSizes[indKey] = nextHeight;
+        return nextHeight;
+    }
+
+    function saveOscillatorPanelSizes(pane) {
+        SafeStorage.setItem(`ag_pane_oscillator_sizes_${pane.id}`, JSON.stringify(pane.oscillatorSizes || {}));
+    }
+
+    function wireOscillatorPanelResize(pane, indKey, subpaneEl, handle) {
+        if (!handle) return;
+
+        handle.addEventListener('mousedown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const startY = event.clientY;
+            const startHeight = subpaneEl.getBoundingClientRect().height;
+            document.body.classList.add('is-resizing-panel');
+            subpaneEl.classList.add('is-resizing');
+
+            const onMove = moveEvent => {
+                const delta = moveEvent.clientY - startY;
+                const nextHeight = applyOscillatorPanelHeight(pane, indKey, subpaneEl, startHeight - delta);
+                const osc = pane.oscillators[indKey];
+                if (osc?.chart) {
+                    const rect = subpaneEl.getBoundingClientRect();
+                    if (rect.width > 0 && nextHeight > 0) osc.chart.resize(rect.width, nextHeight);
+                }
+                handleResize();
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                document.body.classList.remove('is-resizing-panel');
+                subpaneEl.classList.remove('is-resizing');
+                saveOscillatorPanelSizes(pane);
+                handleResize();
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
     }
 
     function clearOscillator(pane, indKey) {
@@ -756,6 +1322,76 @@ function startApp() {
         if (Object.keys(pane.oscillators).length === 0 && pane.oscillatorsContainer) {
             pane.oscillatorsContainer.classList.add('hidden');
         }
+        updateActiveIndicatorLegend(pane);
+    }
+
+    function wireHistoryBackfill(pane) {
+        if (!pane || pane._historyBackfillSynced) return;
+        pane._historyBackfillSynced = true;
+
+        pane.chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+            if (!range || pane._isSyncing || pane._isRestoringBackfillRange) return;
+            if (range.from <= HISTORY_BACKFILL_EDGE_BARS) {
+                loadOlderCandles(pane);
+            }
+        });
+    }
+
+    function loadOlderCandles(pane) {
+        if (!pane || pane.isBackfilling || !pane.hasMoreHistory) return;
+        if (!pane.candles || pane.candles.length === 0) return;
+
+        const firstTime = pane.candles[0].time;
+        if (firstTime == null) return;
+
+        pane.isBackfilling = true;
+        const previousCount = pane.candles.length;
+        const previousRange = pane.chart.timeScale().getVisibleLogicalRange();
+
+        fetch(buildHistoricalUrl(pane, HISTORY_BACKFILL_LIMIT, firstTime))
+            .then(r => r.json())
+            .then(data => {
+                if (!Array.isArray(data) || data.length === 0) {
+                    pane.hasMoreHistory = false;
+                    return;
+                }
+
+                const olderCandles = data.filter(c => c && c.time < firstTime);
+                if (olderCandles.length === 0) {
+                    pane.hasMoreHistory = false;
+                    return;
+                }
+
+                pane.candles = mergeCandles(pane.candles, olderCandles);
+                const addedCount = pane.candles.length - previousCount;
+                if (addedCount <= 0) {
+                    pane.hasMoreHistory = false;
+                    return;
+                }
+
+                rebuildTimeIndexMap(pane);
+                pane.series.setData(pane.candles);
+                pane.lastCandle = pane.candles[pane.candles.length - 1];
+                updateActiveIndicators(pane);
+                syncTimeScales(pane);
+
+                if (previousRange) {
+                    const restoredRange = {
+                        from: previousRange.from + addedCount,
+                        to: previousRange.to + addedCount
+                    };
+                    pane._isRestoringBackfillRange = true;
+                    pane.chart.timeScale().setVisibleLogicalRange(restoredRange);
+                    Object.values(pane.oscillators).forEach(osc => {
+                        if (osc.chart) osc.chart.timeScale().setVisibleLogicalRange(restoredRange);
+                    });
+                    pane._isRestoringBackfillRange = false;
+                }
+            })
+            .catch(err => console.warn(`Pane #${pane.id} backfill failed:`, err))
+            .finally(() => {
+                pane.isBackfilling = false;
+            });
     }
 
     // Sync main + osc time scales (loose coupling — just keep range in sync)
@@ -1097,6 +1733,149 @@ function startApp() {
                 pane.series.setMarkers(allMarkers);
             }
         }
+    }
+
+    function initIndicatorLibraryEvents() {
+        const modal = document.getElementById('indicator-library-dialog');
+        const closeBtn = document.getElementById('indicator-library-close');
+        const search = document.getElementById('indicator-library-search');
+        const applyBtn = document.getElementById('indicator-library-apply');
+        const removeBtn = document.getElementById('indicator-library-remove');
+
+        if (closeBtn && modal) closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+        if (search) search.addEventListener('input', renderIndicatorLibrary);
+
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+                const pane = STATE.panes[activeIndicatorLibraryPaneId];
+                if (!pane || !selectedIndicatorKey) return;
+                setIndicatorConfig(pane, selectedIndicatorKey, readIndicatorSettingsForm(selectedIndicatorKey));
+                setIndicatorActive(pane, selectedIndicatorKey, true);
+                renderIndicatorLibrary();
+            });
+        }
+
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                const pane = STATE.panes[activeIndicatorLibraryPaneId];
+                if (!pane || !selectedIndicatorKey) return;
+                setIndicatorActive(pane, selectedIndicatorKey, false);
+                renderIndicatorLibrary();
+            });
+        }
+    }
+
+    function openIndicatorLibrary(paneId) {
+        const pane = STATE.panes[paneId];
+        if (!pane) return;
+
+        activeIndicatorLibraryPaneId = paneId;
+        const activeKey = Object.keys(pane.activeIndicators || {}).find(key => pane.activeIndicators[key]);
+        selectedIndicatorKey = selectedIndicatorKey && INDICATOR_DEFS[selectedIndicatorKey]
+            ? selectedIndicatorKey
+            : (activeKey || 'sma20');
+
+        const paneLabel = document.getElementById('indicator-library-pane-label');
+        if (paneLabel) paneLabel.textContent = `Pane #${paneId} · ${pane.symbol} · ${pane.timeframe}`;
+
+        const search = document.getElementById('indicator-library-search');
+        if (search) search.value = '';
+
+        const modal = document.getElementById('indicator-library-dialog');
+        if (modal) modal.classList.remove('hidden');
+        renderIndicatorLibrary();
+    }
+
+    function renderIndicatorLibrary() {
+        const pane = STATE.panes[activeIndicatorLibraryPaneId];
+        const list = document.getElementById('indicator-library-list');
+        if (!pane || !list) return;
+
+        const query = (document.getElementById('indicator-library-search')?.value || '').trim().toLowerCase();
+        const entries = Object.entries(INDICATOR_DEFS)
+            .filter(([, def]) => !query || `${def.name} ${def.short} ${def.category}`.toLowerCase().includes(query));
+
+        const categories = [];
+        entries.forEach(([key, def]) => {
+            let group = categories.find(item => item.name === def.category);
+            if (!group) {
+                group = { name: def.category, items: [] };
+                categories.push(group);
+            }
+            group.items.push([key, def]);
+        });
+
+        list.innerHTML = categories.map(group => `
+            <div class="indicator-category-label">${group.name}</div>
+            ${group.items.map(([key, def]) => `
+                <button class="indicator-list-item ${key === selectedIndicatorKey ? 'selected' : ''}" data-indicator-key="${key}">
+                    <span>
+                        <span class="indicator-list-name">${def.name}</span>
+                        <span class="indicator-list-meta">${def.short} · ${def.kind === 'overlay' ? 'On chart' : 'Separate panel'}</span>
+                    </span>
+                    <span class="indicator-active-badge">${pane.activeIndicators[key] ? 'Active' : ''}</span>
+                </button>
+            `).join('')}
+        `).join('');
+
+        list.querySelectorAll('.indicator-list-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedIndicatorKey = btn.dataset.indicatorKey;
+                renderIndicatorLibrary();
+            });
+        });
+
+        renderIndicatorSettingsPanel(pane);
+    }
+
+    function renderIndicatorSettingsPanel(pane) {
+        const def = INDICATOR_DEFS[selectedIndicatorKey];
+        const fieldsEl = document.getElementById('indicator-settings-fields');
+        const nameEl = document.getElementById('indicator-settings-name');
+        const categoryEl = document.getElementById('indicator-settings-category');
+        const removeBtn = document.getElementById('indicator-library-remove');
+        if (!def || !fieldsEl) return;
+
+        const cfg = getIndicatorConfig(pane, selectedIndicatorKey);
+        if (nameEl) nameEl.textContent = def.name;
+        if (categoryEl) categoryEl.textContent = `${def.category} · ${def.kind === 'overlay' ? 'On chart' : 'Separate panel'}`;
+        if (removeBtn) removeBtn.disabled = !pane.activeIndicators[selectedIndicatorKey];
+
+        if (!def.fields || def.fields.length === 0) {
+            fieldsEl.innerHTML = selectedIndicatorKey === 'smc'
+                ? '<p class="indicator-list-meta">Use the SMC gear in the toolbar for its full LuxAlgo-style settings.</p>'
+                : '<p class="indicator-list-meta">This indicator has no configurable inputs.</p>';
+            return;
+        }
+
+        fieldsEl.innerHTML = def.fields.map(field => {
+            const [key, label, type, min, max, step] = field;
+            const value = cfg[key] ?? def.defaults[key] ?? '';
+            const attrs = [
+                `data-field-key="${key}"`,
+                `type="${type}"`,
+                min != null ? `min="${min}"` : '',
+                max != null ? `max="${max}"` : '',
+                step != null ? `step="${step}"` : (type === 'number' ? 'step="1"' : ''),
+                `value="${value}"`
+            ].filter(Boolean).join(' ');
+            return `
+                <label class="indicator-field-row">
+                    <span>${label}</span>
+                    <input ${attrs}>
+                </label>
+            `;
+        }).join('');
+    }
+
+    function readIndicatorSettingsForm(indKey) {
+        const def = INDICATOR_DEFS[indKey];
+        const cfg = { ...(def?.defaults || {}) };
+        document.querySelectorAll('#indicator-settings-fields [data-field-key]').forEach(input => {
+            const key = input.dataset.fieldKey;
+            cfg[key] = input.type === 'number' ? parseFloat(input.value) : input.value;
+        });
+        return cfg;
     }
 
     function openSMCSettings(paneId) {
@@ -1593,10 +2372,11 @@ function startApp() {
                 const w = mount.clientWidth, h = mount.clientHeight;
                 if (w > 0 && h > 0) pane.chart.resize(w, h);
             }
-            if (pane.oscChart && pane.oscillatorEl) {
-                const r = pane.oscillatorEl.getBoundingClientRect();
-                if (r.width > 0 && r.height > 0) pane.oscChart.resize(r.width, r.height);
-            }
+            Object.values(pane.oscillators || {}).forEach(osc => {
+                if (!osc?.chart || !osc.subpaneEl) return;
+                const r = osc.subpaneEl.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) osc.chart.resize(r.width, r.height);
+            });
         });
     }
 
