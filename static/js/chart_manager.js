@@ -43,10 +43,12 @@ function startApp() {
     let activeSMCSettingsPaneId = null;
     let activeIndicatorLibraryPaneId = null;
     let selectedIndicatorKey = null;
+    let editingIndicatorKey = null;
 
 
     // DOM refs
     const chartCountSelect   = document.getElementById('chart-count-select');
+    const paneLayoutButtons  = Array.from(document.querySelectorAll('.pane-layout-btn'));
     const mt5StatusPanel     = document.getElementById('mt5-status-panel');
     const gridContainer      = document.getElementById('grid-container');
     const chartPaneTemplate  = document.getElementById('chart-pane-template');
@@ -121,6 +123,10 @@ function startApp() {
         if (chartCountSelect)
             chartCountSelect.addEventListener('change', e => updateGridCount(parseInt(e.target.value)));
 
+        paneLayoutButtons.forEach(btn => {
+            btn.addEventListener('click', () => updateGridCount(parseInt(btn.dataset.paneCount, 10)));
+        });
+
         if (mt5StatusPanel)
             mt5StatusPanel.addEventListener('click', testMT5Connection);
 
@@ -134,9 +140,19 @@ function startApp() {
     // ──────────────────────────────────────────────
     // GRID
     // ──────────────────────────────────────────────
+    function syncPaneLayoutControl(count) {
+        if (chartCountSelect) chartCountSelect.value = String(count);
+        paneLayoutButtons.forEach(btn => {
+            const active = btn.dataset.paneCount === String(count);
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+    }
+
     function updateGridCount(count) {
         STATE.activePanesCount = count;
         SafeStorage.setItem('ag_pane_count', count);
+        syncPaneLayoutControl(count);
 
         if (gridContainer) {
             gridContainer.className = `grid-container grid-${count}-pane`;
@@ -239,8 +255,8 @@ function startApp() {
             },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
-                vertLine: { color: '#7B2CBF', width: 1, style: 2 },
-                horzLine: { color: '#7B2CBF', width: 1, style: 2 }
+                vertLine: { color: '#7B2CBF', width: 1, style: LightweightCharts.LineStyle.Solid },
+                horzLine: { color: '#7B2CBF', width: 1, style: LightweightCharts.LineStyle.Solid }
             },
             rightPriceScale: {
                 borderColor: 'rgba(255,255,255,0.07)', visible: true, minimumWidth: 80
@@ -255,7 +271,9 @@ function startApp() {
         const series = chart.addSeries(LightweightCharts.CandlestickSeries, {
             upColor:        '#00E676', downColor:        '#FF1744',
             borderUpColor:  '#00E676', borderDownColor:  '#FF1744',
-            wickUpColor:    '#00E676', wickDownColor:    '#FF1744'
+            wickUpColor:    '#00E676', wickDownColor:    '#FF1744',
+            priceLineStyle: LightweightCharts.LineStyle.Solid,
+            priceLineWidth: 1
         });
 
         // ── Oscillator Charts Stack ──
@@ -341,7 +359,7 @@ function startApp() {
         // Indicator toolbar wiring
         paneEl.querySelectorAll('.ind-chip').forEach(btn => {
             const ind = btn.dataset.indicator;
-            if (activeIndicators[ind]) {
+            if (Object.entries(activeIndicators || {}).some(([key, active]) => active && getIndicatorBaseKey(key) === ind)) {
                 btn.classList.add('active');
                 const group = btn.closest('.ind-chip-group');
                 if (group) group.classList.add('active');
@@ -540,16 +558,23 @@ function startApp() {
         const pane = STATE.panes[paneId];
         if (!pane) return;
 
-        const isActive = !!pane.activeIndicators[indKey];
+        const isActive = getActiveIndicatorKeysByBase(pane, indKey).length > 0;
 
         if (isActive) {
-            // Remove
-            removeIndicator(pane, indKey);
-            pane.activeIndicators[indKey] = false;
-            if (pane.indicatorVisibility) delete pane.indicatorVisibility[indKey];
-            btn.classList.remove('active');
-            const group = btn.closest('.ind-chip-group');
-            if (group) group.classList.remove('active');
+            if (indKey === 'smc') {
+                // SMC is a singleton overlay because it owns shared chart markers.
+                removeIndicatorsByBase(pane, indKey);
+                btn.classList.remove('active');
+                const group = btn.closest('.ind-chip-group');
+                if (group) group.classList.remove('active');
+            } else {
+                const instanceKey = createIndicatorInstanceKey(pane, indKey);
+                pane.indicatorVisibility = pane.indicatorVisibility || {};
+                pane.indicatorVisibility[instanceKey] = true;
+                renderIndicator(pane, instanceKey);
+                pane.activeIndicators[instanceKey] = true;
+                btn.classList.add('active');
+            }
         } else {
             // Add
             if (pane.candles.length === 0) {
@@ -571,14 +596,52 @@ function startApp() {
         renderIndicatorLibrary();
     }
 
+    function getIndicatorBaseKey(indKey) {
+        return String(indKey || '').split('__')[0];
+    }
+
+    function getIndicatorDef(indKey) {
+        return INDICATOR_DEFS[getIndicatorBaseKey(indKey)];
+    }
+
+    function getActiveIndicatorKeysByBase(pane, baseKey) {
+        return Object.entries(pane.activeIndicators || {})
+            .filter(([key, active]) => active && getIndicatorBaseKey(key) === baseKey)
+            .map(([key]) => key);
+    }
+
+    function createIndicatorInstanceKey(pane, baseKey) {
+        if (!pane.activeIndicators?.[baseKey]) return baseKey;
+        let key;
+        do {
+            key = `${baseKey}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        } while (pane.activeIndicators?.[key]);
+        return key;
+    }
+
+    function seriesKey(indKey, suffix = 'line') {
+        return getIndicatorBaseKey(indKey) === indKey && suffix === 'line'
+            ? indKey
+            : `${indKey}:${suffix}`;
+    }
+
     function getIndicatorConfig(pane, indKey) {
-        const def = INDICATOR_DEFS[indKey] || { defaults: {} };
-        return { ...(def.defaults || {}), ...((pane.indicatorSettings || {})[indKey] || {}) };
+        const def = getIndicatorDef(indKey) || { defaults: {} };
+        const cfg = { ...(def.defaults || {}), ...((pane.indicatorSettings || {})[indKey] || {}) };
+        (def.fields || []).forEach(field => {
+            const [key, , type, min, max] = field;
+            if (type !== 'number') return;
+            const value = Number(cfg[key]);
+            cfg[key] = Number.isFinite(value) && (min == null || value >= min) && (max == null || value <= max)
+                ? value
+                : def.defaults?.[key];
+        });
+        return cfg;
     }
 
     function setIndicatorConfig(pane, indKey, cfg) {
         pane.indicatorSettings = pane.indicatorSettings || {};
-        pane.indicatorSettings[indKey] = { ...(INDICATOR_DEFS[indKey]?.defaults || {}), ...cfg };
+        pane.indicatorSettings[indKey] = { ...(getIndicatorDef(indKey)?.defaults || {}), ...cfg };
         SafeStorage.setItem(`ag_pane_indicator_settings_${pane.id}`, JSON.stringify(pane.indicatorSettings));
     }
 
@@ -617,11 +680,10 @@ function startApp() {
     function setIndicatorActive(pane, indKey, active) {
         if (!pane || !indKey) return;
         if (active) {
-            if (pane.candles.length === 0) return;
             pane.activeIndicators[indKey] = true;
             pane.indicatorVisibility = pane.indicatorVisibility || {};
             pane.indicatorVisibility[indKey] = true;
-            renderIndicator(pane, indKey);
+            if (pane.candles.length > 0) renderIndicator(pane, indKey);
         } else {
             removeIndicator(pane, indKey);
             pane.activeIndicators[indKey] = false;
@@ -632,21 +694,44 @@ function startApp() {
         updateActiveIndicatorLegend(pane);
     }
 
+    function addIndicatorFromLibrary(pane, baseKey) {
+        if (!pane || !baseKey || !getIndicatorDef(baseKey)) return null;
+
+        const indKey = createIndicatorInstanceKey(pane, baseKey);
+        setIndicatorConfig(pane, indKey, readIndicatorSettingsForm(baseKey));
+        setIndicatorActive(pane, indKey, true);
+        selectedIndicatorKey = indKey;
+        return indKey;
+    }
+
+    function removeIndicatorsByBase(pane, baseKey) {
+        getActiveIndicatorKeysByBase(pane, baseKey).forEach(indKey => {
+            removeIndicator(pane, indKey);
+            pane.activeIndicators[indKey] = false;
+            if (pane.indicatorVisibility) delete pane.indicatorVisibility[indKey];
+        });
+        saveIndicatorState(pane);
+        updateToolbarIndicatorState(pane, baseKey);
+        updateActiveIndicatorLegend(pane);
+    }
+
     function updateToolbarIndicatorState(pane, indKey) {
-        const btn = pane.element.querySelector(`.ind-chip[data-indicator="${indKey}"]`);
+        const baseKey = getIndicatorBaseKey(indKey);
+        const btn = pane.element.querySelector(`.ind-chip[data-indicator="${baseKey}"]`);
         if (!btn) return;
-        const active = !!pane.activeIndicators[indKey];
+        const active = getActiveIndicatorKeysByBase(pane, baseKey).length > 0;
         btn.classList.toggle('active', active);
         const group = btn.closest('.ind-chip-group');
         if (group) group.classList.toggle('active', active);
     }
 
     function getIndicatorLegendLabel(pane, indKey) {
-        const def = INDICATOR_DEFS[indKey];
+        const baseKey = getIndicatorBaseKey(indKey);
+        const def = getIndicatorDef(indKey);
         const cfg = getIndicatorConfig(pane, indKey);
         if (!def) return indKey;
 
-        switch (indKey) {
+        switch (baseKey) {
             case 'sma20':
             case 'sma50':
                 return `SMA ${cfg.period}`;
@@ -685,7 +770,7 @@ function startApp() {
     }
 
     function openIndicatorSettings(paneId, indKey) {
-        if (indKey === 'smc') {
+        if (getIndicatorBaseKey(indKey) === 'smc') {
             openSMCSettings(paneId);
             return;
         }
@@ -694,6 +779,7 @@ function startApp() {
         if (!pane) return;
         activeIndicatorLibraryPaneId = paneId;
         selectedIndicatorKey = indKey;
+        editingIndicatorKey = indKey;
 
         const paneLabel = document.getElementById('indicator-library-pane-label');
         if (paneLabel) paneLabel.textContent = `Pane #${paneId} · ${pane.symbol} · ${pane.timeframe}`;
@@ -766,7 +852,7 @@ function startApp() {
 
         legend.innerHTML = '';
         Object.entries(pane.activeIndicators || {}).forEach(([indKey, active]) => {
-            const def = INDICATOR_DEFS[indKey];
+            const def = getIndicatorDef(indKey);
             if (!active || !def) return;
             if (def.kind !== 'overlay' && isIndicatorVisible(pane, indKey)) return;
             legend.appendChild(makeIndicatorLegendItem(pane, indKey));
@@ -784,36 +870,37 @@ function startApp() {
 
         const c = pane.candles;
         const cfg = getIndicatorConfig(pane, indKey);
+        const baseKey = getIndicatorBaseKey(indKey);
 
-        switch(indKey) {
-            case 'sma20': renderLineSeries(pane, 'sma20', Indicators.sma(c, cfg.period), cfg.color, cfg.width); break;
-            case 'sma50': renderLineSeries(pane, 'sma50', Indicators.sma(c, cfg.period), cfg.color, cfg.width); break;
-            case 'ema9':  renderLineSeries(pane, 'ema9',  Indicators.ema(c, cfg.period), cfg.color, cfg.width); break;
-            case 'ema21': renderLineSeries(pane, 'ema21', Indicators.ema(c, cfg.period), cfg.color, cfg.width); break;
-            case 'wma20': renderLineSeries(pane, 'wma20', Indicators.wma(c, cfg.period), cfg.color, cfg.width); break;
-            case 'hma20': renderLineSeries(pane, 'hma20', Indicators.hma(c, cfg.period), cfg.color, cfg.width); break;
-            case 'vwap':  renderLineSeries(pane, 'vwap',  Indicators.vwap(c), cfg.color, cfg.width); break;
+        switch(baseKey) {
+            case 'sma20': renderLineSeries(pane, seriesKey(indKey), Indicators.sma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'sma50': renderLineSeries(pane, seriesKey(indKey), Indicators.sma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'ema9':  renderLineSeries(pane, seriesKey(indKey), Indicators.ema(c, cfg.period), cfg.color, cfg.width); break;
+            case 'ema21': renderLineSeries(pane, seriesKey(indKey), Indicators.ema(c, cfg.period), cfg.color, cfg.width); break;
+            case 'wma20': renderLineSeries(pane, seriesKey(indKey), Indicators.wma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'hma20': renderLineSeries(pane, seriesKey(indKey), Indicators.hma(c, cfg.period), cfg.color, cfg.width); break;
+            case 'vwap':  renderLineSeries(pane, seriesKey(indKey), Indicators.vwap(c), cfg.color, cfg.width); break;
 
             case 'bb20': {
                 const bb = Indicators.bollingerBands(c, cfg.period, cfg.stdDev);
-                renderLineSeries(pane, 'bbUpper',  bb.upper,  cfg.color,  1,  { lineStyle: 1 });
-                renderLineSeries(pane, 'bbMiddle', bb.middle, cfg.middleColor, 1,  { lineStyle: 2 });
-                renderLineSeries(pane, 'bbLower',  bb.lower,  cfg.color,  1,  { lineStyle: 1 });
+                renderLineSeries(pane, seriesKey(indKey, 'bbUpper'),  bb.upper,  cfg.color,  1.5);
+                renderLineSeries(pane, seriesKey(indKey, 'bbMiddle'), bb.middle, cfg.middleColor, 1);
+                renderLineSeries(pane, seriesKey(indKey, 'bbLower'),  bb.lower,  cfg.color,  1.5);
                 break;
             }
 
-            case 'ichimoku': renderIchimoku(pane, cfg); break;
-            case 'supertrend': renderSupertrend(pane, cfg); break;
-            case 'rsi14': renderOscillatorRSI(pane, cfg); break;
-            case 'macd':  renderOscillatorMACD(pane, cfg); break;
-            case 'stoch': renderOscillatorStochastic(pane, cfg); break;
+            case 'ichimoku': renderIchimoku(pane, cfg, indKey); break;
+            case 'supertrend': renderSupertrend(pane, cfg, indKey); break;
+            case 'rsi14': renderOscillatorRSI(pane, cfg, indKey); break;
+            case 'macd':  renderOscillatorMACD(pane, cfg, indKey); break;
+            case 'stoch': renderOscillatorStochastic(pane, cfg, indKey); break;
             case 'cci': renderOscillatorLine(pane, indKey, `CCI (${cfg.period})`, Indicators.cci(c, cfg.period), cfg.color, 2, [{ value: 100, color: 'rgba(255,23,68,0.35)' }, { value: -100, color: 'rgba(0,230,118,0.35)' }]); break;
             case 'momentum': renderOscillatorLine(pane, indKey, `Momentum (${cfg.period})`, Indicators.momentum(c, cfg.period), cfg.color, 4, [{ value: 0, color: 'rgba(120,123,134,0.35)' }]); break;
             case 'roc': renderOscillatorLine(pane, indKey, `ROC (${cfg.period})`, Indicators.roc(c, cfg.period), cfg.color, 2, [{ value: 0, color: 'rgba(120,123,134,0.35)' }]); break;
             case 'atr': renderOscillatorLine(pane, indKey, `ATR (${cfg.period})`, Indicators.atr(c, cfg.period), cfg.color, 5); break;
             case 'obv': renderOscillatorLine(pane, indKey, 'OBV', Indicators.obv(c), cfg.color, 0); break;
-            case 'adx': renderOscillatorADX(pane, cfg); break;
-            case 'volume': renderOscillatorVolume(pane); break;
+            case 'adx': renderOscillatorADX(pane, cfg, indKey); break;
+            case 'volume': renderOscillatorVolume(pane, indKey); break;
             case 'smc': renderSMC(pane); break;
         }
 
@@ -821,13 +908,13 @@ function startApp() {
     }
 
     function removeIndicator(pane, indKey) {
-        if (indKey === 'smc') {
+        const baseKey = getIndicatorBaseKey(indKey);
+        if (baseKey === 'smc') {
             clearSMC(pane);
             return;
         }
 
-        // Overlay series removal
-        const overlayKeys = {
+        const legacyOverlayKeys = {
             sma20:  ['sma20'],
             sma50:  ['sma50'],
             ema9:   ['ema9'],
@@ -840,17 +927,16 @@ function startApp() {
             supertrend: ['supertrend']
         };
 
-        if (overlayKeys[indKey]) {
-            overlayKeys[indKey].forEach(k => {
-                if (pane.overlaySeries[k]) {
-                    try { pane.chart.removeSeries(pane.overlaySeries[k]); } catch(e) {}
-                    delete pane.overlaySeries[k];
-                }
-            });
-        }
+        Object.keys(pane.overlaySeries || {}).forEach(k => {
+            const isInstanceSeries = k === indKey || k.startsWith(`${indKey}:`);
+            const isLegacySeries = baseKey === indKey && legacyOverlayKeys[baseKey]?.includes(k);
+            if (!isInstanceSeries && !isLegacySeries) return;
+            try { pane.chart.removeSeries(pane.overlaySeries[k]); } catch(e) {}
+            delete pane.overlaySeries[k];
+        });
 
         // Oscillator removal
-        if (['rsi14', 'macd', 'volume', 'stoch', 'cci', 'momentum', 'roc', 'atr', 'obv', 'adx'].includes(indKey)) {
+        if (['rsi14', 'macd', 'volume', 'stoch', 'cci', 'momentum', 'roc', 'atr', 'obv', 'adx'].includes(baseKey)) {
             clearOscillator(pane, indKey);
         }
     }
@@ -893,17 +979,17 @@ function startApp() {
         pane.overlaySeries[key] = s;
     }
 
-    function renderIchimoku(pane, cfg) {
+    function renderIchimoku(pane, cfg, indKey = 'ichimoku') {
         const data = Indicators.ichimoku(pane.candles, cfg.tenkan, cfg.kijun, cfg.spanB);
-        renderLineSeries(pane, 'ichiConversion', data.conversion, cfg.conversionColor, 1.5);
-        renderLineSeries(pane, 'ichiBase', data.base, cfg.baseColor, 1.5);
-        renderLineSeries(pane, 'ichiSpanA', data.spanA, cfg.cloudColor, 1, { lineStyle: 2 });
-        renderLineSeries(pane, 'ichiSpanB', data.spanB, cfg.cloudColor, 1, { lineStyle: 2 });
+        renderLineSeries(pane, seriesKey(indKey, 'ichiConversion'), data.conversion, cfg.conversionColor, 1.5);
+        renderLineSeries(pane, seriesKey(indKey, 'ichiBase'), data.base, cfg.baseColor, 1.5);
+        renderLineSeries(pane, seriesKey(indKey, 'ichiSpanA'), data.spanA, cfg.cloudColor, 1, { lineStyle: 2 });
+        renderLineSeries(pane, seriesKey(indKey, 'ichiSpanB'), data.spanB, cfg.cloudColor, 1, { lineStyle: 2 });
     }
 
-    function renderSupertrend(pane, cfg) {
+    function renderSupertrend(pane, cfg, indKey = 'supertrend') {
         const data = Indicators.supertrend(pane.candles, cfg.period, cfg.multiplier);
-        renderLineSeries(pane, 'supertrend', data.line, '#089981', cfg.width, {
+        renderLineSeries(pane, seriesKey(indKey), data.line, '#089981', cfg.width, {
             priceLineVisible: false,
             lastValueVisible: true
         });
@@ -954,8 +1040,7 @@ function startApp() {
     }
 
     // ── RSI sub-pane ──
-    function renderOscillatorRSI(pane, cfg = getIndicatorConfig(pane, 'rsi14')) {
-        const indKey = 'rsi14';
+    function renderOscillatorRSI(pane, cfg = getIndicatorConfig(pane, 'rsi14'), indKey = 'rsi14') {
         const rsiData = Indicators.rsi(pane.candles, cfg.period);
         if (!rsiData || rsiData.length === 0) return;
 
@@ -998,8 +1083,7 @@ function startApp() {
     }
 
     // ── MACD sub-pane ──
-    function renderOscillatorMACD(pane, cfg = getIndicatorConfig(pane, 'macd')) {
-        const indKey = 'macd';
+    function renderOscillatorMACD(pane, cfg = getIndicatorConfig(pane, 'macd'), indKey = 'macd') {
         const macdData = Indicators.macd(pane.candles, cfg.fast, cfg.slow, cfg.signal);
         if (!macdData) return;
 
@@ -1043,8 +1127,7 @@ function startApp() {
         syncTimeScales(pane);
     }
 
-    function renderOscillatorStochastic(pane, cfg) {
-        const indKey = 'stoch';
+    function renderOscillatorStochastic(pane, cfg, indKey = 'stoch') {
         const data = Indicators.stochastic(pane.candles, cfg.k, cfg.d, cfg.smooth);
         if (!data.kLine || data.kLine.length === 0) return;
         const osc = ensureOscChart(pane, indKey, `Stoch (${cfg.k},${cfg.d},${cfg.smooth})`);
@@ -1079,8 +1162,7 @@ function startApp() {
         syncTimeScales(pane);
     }
 
-    function renderOscillatorADX(pane, cfg) {
-        const indKey = 'adx';
+    function renderOscillatorADX(pane, cfg, indKey = 'adx') {
         const data = Indicators.adx(pane.candles, cfg.period);
         if (!data.adxLine || data.adxLine.length === 0) return;
         const osc = ensureOscChart(pane, indKey, `ADX (${cfg.period})`);
@@ -1108,8 +1190,7 @@ function startApp() {
     }
 
     // ── Volume sub-pane ──
-    function renderOscillatorVolume(pane) {
-        const indKey = 'volume';
+    function renderOscillatorVolume(pane, indKey = 'volume') {
         const volData = Indicators.volume(pane.candles);
         if (!volData || volData.length === 0) return;
 
@@ -1218,8 +1299,8 @@ function startApp() {
                 },
                 crosshair: {
                     mode: LightweightCharts.CrosshairMode.Normal,
-                    vertLine: { color: '#7B2CBF', width: 1, style: 2 },
-                    horzLine: { color: '#7B2CBF', width: 1, style: 2 }
+                    vertLine: { color: '#7B2CBF', width: 1, style: LightweightCharts.LineStyle.Solid },
+                    horzLine: { color: '#7B2CBF', width: 1, style: LightweightCharts.LineStyle.Solid }
                 },
                 rightPriceScale: { borderColor: 'rgba(255,255,255,0.05)', visible: true, scaleMargins: { top: 0.1, bottom: 0.1 }, minimumWidth: 80 },
                 timeScale:       { borderColor: 'rgba(255,255,255,0.05)', visible: true, timeVisible: true, secondsVisible: false }
@@ -1438,6 +1519,11 @@ function startApp() {
     }
 
     // ── High-Performance Crosshair Synchronization ──
+    function getPrimaryOscillatorSeries(osc) {
+        return osc.series.rsiLine || osc.series.macdLine || osc.series.mainLine ||
+            osc.series.kLine || osc.series.adxLine || osc.series.volBars;
+    }
+
     function syncCrosshairs(pane) {
         // Collect all charts to sync
         const sources = [
@@ -1446,7 +1532,7 @@ function startApp() {
 
         Object.entries(pane.oscillators).forEach(([key, osc]) => {
             if (osc.chart) {
-                const series = osc.series.rsiLine || osc.series.macdLine || osc.series.volBars;
+                const series = getPrimaryOscillatorSeries(osc);
                 if (series) {
                     sources.push({ chart: osc.chart, series: series, id: key, osc: osc });
                 }
@@ -1467,7 +1553,7 @@ function startApp() {
                     const targets = [];
                     Object.entries(pane.oscillators).forEach(([key, osc]) => {
                         if (osc.chart && osc.chart !== source.chart) {
-                            const series = osc.series.rsiLine || osc.series.macdLine || osc.series.volBars;
+                            const series = getPrimaryOscillatorSeries(osc);
                             if (series) {
                                 targets.push({ chart: osc.chart, series: series, id: key, osc: osc });
                             }
@@ -1486,13 +1572,10 @@ function startApp() {
                                 const idx = pane.timeToIndexMap.get(time);
                                 if (target.id === 'main') {
                                     price = pane.candles[idx] ? pane.candles[idx].close : 0;
-                                } else if (target.id === 'rsi14') {
-                                    const item = target.osc.alignedData && target.osc.alignedData[idx];
-                                    price = (item && item.value !== undefined) ? item.value : 50;
-                                } else if (target.id === 'macd') {
+                                } else if (getIndicatorBaseKey(target.id) === 'macd') {
                                     const item = target.osc.alignedLineData && target.osc.alignedLineData[idx];
                                     price = (item && item.value !== undefined) ? item.value : 0;
-                                } else if (target.id === 'volume') {
+                                } else {
                                     const item = target.osc.alignedData && target.osc.alignedData[idx];
                                     price = (item && item.value !== undefined) ? item.value : 0;
                                 }
@@ -1749,8 +1832,12 @@ function startApp() {
             applyBtn.addEventListener('click', () => {
                 const pane = STATE.panes[activeIndicatorLibraryPaneId];
                 if (!pane || !selectedIndicatorKey) return;
-                setIndicatorConfig(pane, selectedIndicatorKey, readIndicatorSettingsForm(selectedIndicatorKey));
-                setIndicatorActive(pane, selectedIndicatorKey, true);
+                if (editingIndicatorKey && pane.activeIndicators?.[editingIndicatorKey]) {
+                    setIndicatorConfig(pane, editingIndicatorKey, readIndicatorSettingsForm(editingIndicatorKey));
+                    setIndicatorActive(pane, editingIndicatorKey, true);
+                } else {
+                    addIndicatorFromLibrary(pane, getIndicatorBaseKey(selectedIndicatorKey));
+                }
                 renderIndicatorLibrary();
             });
         }
@@ -1758,8 +1845,9 @@ function startApp() {
         if (removeBtn) {
             removeBtn.addEventListener('click', () => {
                 const pane = STATE.panes[activeIndicatorLibraryPaneId];
-                if (!pane || !selectedIndicatorKey) return;
-                setIndicatorActive(pane, selectedIndicatorKey, false);
+                if (!pane || !editingIndicatorKey) return;
+                setIndicatorActive(pane, editingIndicatorKey, false);
+                editingIndicatorKey = null;
                 renderIndicatorLibrary();
             });
         }
@@ -1770,8 +1858,9 @@ function startApp() {
         if (!pane) return;
 
         activeIndicatorLibraryPaneId = paneId;
+        editingIndicatorKey = null;
         const activeKey = Object.keys(pane.activeIndicators || {}).find(key => pane.activeIndicators[key]);
-        selectedIndicatorKey = selectedIndicatorKey && INDICATOR_DEFS[selectedIndicatorKey]
+        selectedIndicatorKey = selectedIndicatorKey && getIndicatorDef(selectedIndicatorKey)
             ? selectedIndicatorKey
             : (activeKey || 'sma20');
 
@@ -1808,12 +1897,12 @@ function startApp() {
         list.innerHTML = categories.map(group => `
             <div class="indicator-category-label">${group.name}</div>
             ${group.items.map(([key, def]) => `
-                <button class="indicator-list-item ${key === selectedIndicatorKey ? 'selected' : ''}" data-indicator-key="${key}">
+                <button class="indicator-list-item ${key === getIndicatorBaseKey(selectedIndicatorKey) ? 'selected' : ''}" data-indicator-key="${key}">
                     <span>
                         <span class="indicator-list-name">${def.name}</span>
                         <span class="indicator-list-meta">${def.short} · ${def.kind === 'overlay' ? 'On chart' : 'Separate panel'}</span>
                     </span>
-                    <span class="indicator-active-badge">${pane.activeIndicators[key] ? 'Active' : ''}</span>
+                    <span class="indicator-active-badge">${getActiveIndicatorKeysByBase(pane, key).length ? `${getActiveIndicatorKeysByBase(pane, key).length} active` : ''}</span>
                 </button>
             `).join('')}
         `).join('');
@@ -1821,6 +1910,7 @@ function startApp() {
         list.querySelectorAll('.indicator-list-item').forEach(btn => {
             btn.addEventListener('click', () => {
                 selectedIndicatorKey = btn.dataset.indicatorKey;
+                editingIndicatorKey = null;
                 renderIndicatorLibrary();
             });
         });
@@ -1829,20 +1919,26 @@ function startApp() {
     }
 
     function renderIndicatorSettingsPanel(pane) {
-        const def = INDICATOR_DEFS[selectedIndicatorKey];
+        const activeEditKey = editingIndicatorKey && pane.activeIndicators?.[editingIndicatorKey] ? editingIndicatorKey : null;
+        const settingsKey = activeEditKey || selectedIndicatorKey;
+        const baseKey = getIndicatorBaseKey(settingsKey);
+        const def = getIndicatorDef(settingsKey);
         const fieldsEl = document.getElementById('indicator-settings-fields');
         const nameEl = document.getElementById('indicator-settings-name');
         const categoryEl = document.getElementById('indicator-settings-category');
         const removeBtn = document.getElementById('indicator-library-remove');
+        const applyBtn = document.getElementById('indicator-library-apply');
         if (!def || !fieldsEl) return;
 
-        const cfg = getIndicatorConfig(pane, selectedIndicatorKey);
-        if (nameEl) nameEl.textContent = def.name;
-        if (categoryEl) categoryEl.textContent = `${def.category} · ${def.kind === 'overlay' ? 'On chart' : 'Separate panel'}`;
-        if (removeBtn) removeBtn.disabled = !pane.activeIndicators[selectedIndicatorKey];
+        const cfg = getIndicatorConfig(pane, settingsKey);
+        const editingExisting = !!activeEditKey;
+        if (nameEl) nameEl.textContent = editingExisting ? getIndicatorLegendLabel(pane, activeEditKey) : def.name;
+        if (categoryEl) categoryEl.textContent = `${def.category} · ${def.kind === 'overlay' ? 'On chart' : 'Separate panel'}${editingExisting ? ' · Editing active instance' : ' · Add new instance'}`;
+        if (removeBtn) removeBtn.disabled = !editingExisting;
+        if (applyBtn) applyBtn.textContent = editingExisting ? 'Apply' : `Add ${def.short || def.name}`;
 
         if (!def.fields || def.fields.length === 0) {
-            fieldsEl.innerHTML = selectedIndicatorKey === 'smc'
+            fieldsEl.innerHTML = baseKey === 'smc'
                 ? '<p class="indicator-list-meta">Use the SMC gear in the toolbar for its full LuxAlgo-style settings.</p>'
                 : '<p class="indicator-list-meta">This indicator has no configurable inputs.</p>';
             return;
@@ -1869,11 +1965,21 @@ function startApp() {
     }
 
     function readIndicatorSettingsForm(indKey) {
-        const def = INDICATOR_DEFS[indKey];
+        const def = getIndicatorDef(indKey);
         const cfg = { ...(def?.defaults || {}) };
         document.querySelectorAll('#indicator-settings-fields [data-field-key]').forEach(input => {
             const key = input.dataset.fieldKey;
-            cfg[key] = input.type === 'number' ? parseFloat(input.value) : input.value;
+            if (input.type === 'number') {
+                const field = (def?.fields || []).find(item => item[0] === key);
+                const min = field?.[3];
+                const max = field?.[4];
+                const value = parseFloat(input.value);
+                cfg[key] = Number.isFinite(value) && (min == null || value >= min) && (max == null || value <= max)
+                    ? value
+                    : cfg[key];
+            } else {
+                cfg[key] = input.value;
+            }
         });
         return cfg;
     }
@@ -2092,7 +2198,7 @@ function startApp() {
         if (price == null) return;
         const s = pane.chart.addSeries(LightweightCharts.LineSeries, {
             color: 'rgba(255, 214, 102, 0.75)',
-            lineWidth: 1, lineStyle: 1,
+            lineWidth: 1.5, lineStyle: LightweightCharts.LineStyle.Solid,
             priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false,
             priceFormat: { type: 'price', precision: 5, minMove: 0.00001 }
         });

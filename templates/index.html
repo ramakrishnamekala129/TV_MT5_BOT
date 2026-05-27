@@ -44,13 +44,35 @@
             <div class="header-controls">
                 <div class="control-group">
                     <label for="chart-count-select">NUMBER OF PANES</label>
-                    <select id="chart-count-select" class="custom-select">
+                    <select id="chart-count-select" class="custom-select pane-count-select-native" aria-hidden="true" tabindex="-1">
                         <option value="1">1 Pane (Full Screen)</option>
                         <option value="2">2 Panes (Side-by-Side)</option>
                         <option value="4">4 Panes (2×2 Grid)</option>
                         <option value="6" selected>6 Panes (3×2 Grid)</option>
                         <option value="8">8 Panes (4×2 Grid)</option>
                     </select>
+                    <div class="pane-layout-toggle" role="radiogroup" aria-label="Number of chart panes">
+                        <button type="button" class="pane-layout-btn" data-pane-count="1" role="radio" aria-checked="false" title="1 Pane">
+                            <span class="pane-layout-icon layout-1" aria-hidden="true"><i></i></span>
+                            <span class="pane-layout-count">1</span>
+                        </button>
+                        <button type="button" class="pane-layout-btn" data-pane-count="2" role="radio" aria-checked="false" title="2 Panes">
+                            <span class="pane-layout-icon layout-2" aria-hidden="true"><i></i><i></i></span>
+                            <span class="pane-layout-count">2</span>
+                        </button>
+                        <button type="button" class="pane-layout-btn" data-pane-count="4" role="radio" aria-checked="false" title="4 Panes">
+                            <span class="pane-layout-icon layout-4" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                            <span class="pane-layout-count">4</span>
+                        </button>
+                        <button type="button" class="pane-layout-btn" data-pane-count="6" role="radio" aria-checked="true" title="6 Panes">
+                            <span class="pane-layout-icon layout-6" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                            <span class="pane-layout-count">6</span>
+                        </button>
+                        <button type="button" class="pane-layout-btn" data-pane-count="8" role="radio" aria-checked="false" title="8 Panes">
+                            <span class="pane-layout-icon layout-8" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                            <span class="pane-layout-count">8</span>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="control-group">
